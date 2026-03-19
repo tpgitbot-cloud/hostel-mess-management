@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
+import InstallPrompt from './components/InstallPrompt';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
@@ -9,6 +10,7 @@ import AdminDashboard from './pages/AdminDashboard';
 function App() {
   return (
     <Router>
+      <InstallPrompt />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />

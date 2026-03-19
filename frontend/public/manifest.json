@@ -2,11 +2,14 @@
   "name": "TPGIT Hostel Mess",
   "short_name": "TPGIT Mess",
   "description": "TPGIT Hostel Mess - Smart meal tracking, QR scanning, billing, and analytics",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#1e40af",
   "theme_color": "#2563eb",
   "orientation": "portrait-primary",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon-192.png",
@@ -21,7 +24,6 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [],
   "categories": ["education", "food"],
   "lang": "en-IN"
 }
