@@ -1,7 +1,7 @@
 import Meal from '../models/Meal.js';
 import Egg from '../models/Egg.js';
 import Student from '../models/Student.js';
-import { isWithinMealTime, isThursday } from '../utils/validation.js';
+import { isWithinMealTime, isThursday, getISTDate } from '../utils/validation.js';
 
 export const scanMeal = async (req, res) => {
   try {
@@ -43,9 +43,9 @@ export const scanMeal = async (req, res) => {
       });
     }
 
-    // Get today's date at midnight
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Get today's date at midnight in IST
+    const istNow = getISTDate();
+    const today = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate());
 
     // Check if meal already exists for today
     const existingMeal = await Meal.findOne({
@@ -105,9 +105,9 @@ export const scanEgg = async (req, res) => {
       return res.status(400).json({ error: 'Eggs are only distributed on Thursday' });
     }
 
-    // Get today's date at midnight
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Get today's date at midnight in IST
+    const istNow = getISTDate();
+    const today = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate());
 
     // Check if egg already scanned for this week
     const existingEgg = await Egg.findOne({
