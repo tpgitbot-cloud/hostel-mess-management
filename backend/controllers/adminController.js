@@ -298,7 +298,8 @@ export const getPrices = async (req, res) => {
     const price = await Price.findOne().sort({ createdAt: -1 });
 
     if (!price) {
-      return res.status(404).json({ error: 'Prices not configured' });
+      // Return default prices so frontend doesn't crash
+      return res.status(200).json({ breakfast: 0, lunch: 0, dinner: 0, _default: true });
     }
 
     res.status(200).json(price);

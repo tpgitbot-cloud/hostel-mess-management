@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminAPI } from '../utils/api';
 import { clearAuth, getStoredUser } from '../utils/auth';
 import { toast, ToastContainer } from 'react-toastify';
+import { QRCodeSVG } from 'qrcode.react';
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -26,6 +27,13 @@ export const AdminDashboard = () => {
     password: '',
     photo: null,
   });
+  // Price form state
+  const [priceForm, setPriceForm] = useState({
+    breakfast: '',
+    lunch: '',
+    dinner: '',
+  });
+  const [priceLoading, setPriceLoading] = useState(false);
 
   useEffect(() => {
     const storedUser = getStoredUser();
@@ -39,18 +47,33 @@ export const AdminDashboard = () => {
 
   const loadDashboardData = async () => {
     try {
-      const [studentRes, mealRes, eggRes, priceRes] = await Promise.all([
+      const results = await Promise.allSettled([
         adminAPI.getStudents({ limit: 100 }),
         adminAPI.getMealStats(),
         adminAPI.getEggStats(),
         adminAPI.getPrices(),
       ]);
-      setStudents(studentRes.data.students);
-      setMealStats(mealRes.data);
-      setEggStats(eggRes.data);
-      setPrices(priceRes.data);
+
+      if (results[0].status === 'fulfilled') {
+        setStudents(results[0].value.data.students || []);
+      }
+      if (results[1].status === 'fulfilled') {
+        setMealStats(results[1].value.data);
+      }
+      if (results[2].status === 'fulfilled') {
+        setEggStats(results[2].value.data);
+      }
+      if (results[3].status === 'fulfilled') {
+        const p = results[3].value.data;
+        setPrices(p);
+        setPriceForm({
+          breakfast: p.breakfast?.toString() || '',
+          lunch: p.lunch?.toString() || '',
+          dinner: p.dinner?.toString() || '',
+        });
+      }
     } catch (error) {
-      toast.error('Failed to load dashboard data');
+      console.error('Dashboard load error:', error);
     }
   };
 
@@ -143,24 +166,58 @@ export const AdminDashboard = () => {
     }
   };
 
-  const handleSetPrices = async (breakfast, lunch, dinner) => {
+  const handleSetPrices = async (e) => {
+    e.preventDefault();
+    const { breakfast, lunch, dinner } = priceForm;
+    if (!breakfast || !lunch || !dinner) {
+      toast.error('Please fill all price fields');
+      return;
+    }
+    setPriceLoading(true);
     try {
-      await adminAPI.setPrices(breakfast, lunch, dinner);
-      toast.success('Prices updated successfully');
+      await adminAPI.setPrices(
+        parseFloat(breakfast),
+        parseFloat(lunch),
+        parseFloat(dinner)
+      );
+      toast.success('Prices updated successfully!');
       loadDashboardData();
     } catch (error) {
       toast.error('Failed to update prices');
+    } finally {
+      setPriceLoading(false);
     }
   };
 
+  const handlePrintQR = (mealType) => {
+    const printWindow = window.open('', '_blank', 'width=600,height=700');
+    const svgElement = document.getElementById(`qr-${mealType}`);
+    if (!svgElement || !printWindow) return;
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    printWindow.document.write(`
+      <html>
+        <head><title>QR Code - ${mealType}</title></head>
+        <body style="text-align:center;font-family:Arial,sans-serif;padding:40px;">
+          <h1 style="color:#2563eb;">🏫 Hostel Mess</h1>
+          <h2 style="color:#333;margin-bottom:30px;">Scan for ${mealType}</h2>
+          ${svgData}
+          <p style="margin-top:20px;font-size:18px;color:#666;">Point your phone camera at this QR code</p>
+          <p style="font-size:14px;color:#999;">Generated on ${new Date().toLocaleDateString()}</p>
+          <script>window.onload=function(){window.print();}</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   if (!user) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>Loading...</div>;
   }
 
   const filteredStudents = students.filter(
     (s) =>
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.registerNumber.toLowerCase().includes(searchQuery.toLowerCase())
+      (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.registerNumber || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -183,18 +240,18 @@ export const AdminDashboard = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-4">
         {/* Tabs */}
-        <div className="flex gap-4 mb-6 overflow-x-auto">
-          {['dashboard', 'students', 'reports', 'settings'].map((tab) => (
+        <div className="flex gap-3 mb-6 overflow-x-auto">
+          {['dashboard', 'students', 'qr-codes', 'reports', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-2 rounded-lg font-semibold whitespace-nowrap ${
+              className={`px-5 py-2 rounded-lg font-semibold whitespace-nowrap ${
                 activeTab === tab
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'qr-codes' ? '📱 QR Codes' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -264,7 +321,6 @@ export const AdminDashboard = () => {
                 <h3 className="text-lg font-bold text-blue-800 mb-4">📝 Add New Student</h3>
                 <form onSubmit={handleAddStudent}>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* Name */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Full Name <span className="text-red-500">*</span>
@@ -274,12 +330,10 @@ export const AdminDashboard = () => {
                         value={newStudent.name}
                         onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
                         placeholder="e.g. John Doe"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         required
                       />
                     </div>
-
-                    {/* Register Number */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Register Number <span className="text-red-500">*</span>
@@ -289,12 +343,10 @@ export const AdminDashboard = () => {
                         value={newStudent.registerNumber}
                         onChange={(e) => setNewStudent({ ...newStudent, registerNumber: e.target.value })}
                         placeholder="e.g. 2021CSE001"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg uppercase"
                         required
                       />
                     </div>
-
-                    {/* Department */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Department <span className="text-red-500">*</span>
@@ -302,7 +354,7 @@ export const AdminDashboard = () => {
                       <select
                         value={newStudent.department}
                         onChange={(e) => setNewStudent({ ...newStudent, department: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
                         required
                       >
                         <option value="CSE">CSE</option>
@@ -313,8 +365,6 @@ export const AdminDashboard = () => {
                         <option value="IT">IT</option>
                       </select>
                     </div>
-
-                    {/* Year */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Year <span className="text-red-500">*</span>
@@ -322,7 +372,7 @@ export const AdminDashboard = () => {
                       <select
                         value={newStudent.year}
                         onChange={(e) => setNewStudent({ ...newStudent, year: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
                         required
                       >
                         <option value="1">1st Year</option>
@@ -331,8 +381,6 @@ export const AdminDashboard = () => {
                         <option value="4">4th Year</option>
                       </select>
                     </div>
-
-                    {/* Mobile */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Mobile Number <span className="text-red-500">*</span>
@@ -345,13 +393,11 @@ export const AdminDashboard = () => {
                           setNewStudent({ ...newStudent, mobile: val });
                         }}
                         placeholder="e.g. 9876543210"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         maxLength={10}
                         required
                       />
                     </div>
-
-                    {/* Email */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Email <span className="text-gray-400">(optional)</span>
@@ -361,11 +407,9 @@ export const AdminDashboard = () => {
                         value={newStudent.email}
                         onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
                         placeholder="e.g. john@email.com"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       />
                     </div>
-
-                    {/* Password */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Password <span className="text-red-500">*</span>
@@ -375,13 +419,11 @@ export const AdminDashboard = () => {
                         value={newStudent.password}
                         onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
                         placeholder="Min 6 characters"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         minLength={6}
                         required
                       />
                     </div>
-
-                    {/* Photo */}
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">
                         Photo <span className="text-gray-400">(optional)</span>
@@ -390,17 +432,15 @@ export const AdminDashboard = () => {
                         type="file"
                         accept="image/*"
                         onChange={(e) => setNewStudent({ ...newStudent, photo: e.target.files[0] || null })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-100 file:text-blue-700 file:font-semibold hover:file:bg-blue-200"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                       />
                     </div>
                   </div>
-
-                  {/* Submit Button */}
                   <div className="mt-5 flex gap-3">
                     <button
                       type="submit"
                       disabled={addLoading}
-                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
                     >
                       {addLoading ? '⏳ Adding...' : '✅ Add Student'}
                     </button>
@@ -468,6 +508,61 @@ export const AdminDashboard = () => {
           </div>
         )}
 
+        {/* QR Codes Tab */}
+        {activeTab === 'qr-codes' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-2">📱 QR Codes for Meal Scanning</h2>
+            <p className="text-gray-600 mb-6">
+              Print these QR codes and paste them in the mess hall. Students scan them with their phone camera to mark attendance.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { type: 'BREAKFAST', emoji: '🍳', color: '#f59e0b', time: '7:00 AM - 9:00 AM' },
+                { type: 'LUNCH', emoji: '🥗', color: '#22c55e', time: '12:00 PM - 2:00 PM' },
+                { type: 'DINNER', emoji: '🍖', color: '#6366f1', time: '7:00 PM - 9:00 PM' },
+              ].map(({ type, emoji, color, time }) => (
+                <div
+                  key={type}
+                  className="border-2 rounded-xl p-6 text-center"
+                  style={{ borderColor: color }}
+                >
+                  <h3 className="text-xl font-bold mb-1" style={{ color }}>
+                    {emoji} {type}
+                  </h3>
+                  <p className="text-sm text-gray-500 mb-4">{time}</p>
+                  <div className="flex justify-center mb-4">
+                    <QRCodeSVG
+                      id={`qr-${type}`}
+                      value={type}
+                      size={200}
+                      fgColor={color}
+                      level="H"
+                      includeMargin={true}
+                    />
+                  </div>
+                  <button
+                    onClick={() => handlePrintQR(type)}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 w-full"
+                  >
+                    🖨️ Print QR Code
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-bold text-yellow-800 mb-2">💡 How it works:</h4>
+              <ol className="list-decimal list-inside text-sm text-yellow-700 space-y-1">
+                <li>Print each QR code and paste it near the respective meal counter in the mess.</li>
+                <li>Students open the app → go to "Scan QR" tab → point their camera at the QR code.</li>
+                <li>The system automatically records their meal attendance and updates the bill.</li>
+                <li>For eggs (Thursday only), students press the "🥚 Collect Egg" button.</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
         {/* Reports Tab */}
         {activeTab === 'reports' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -475,15 +570,15 @@ export const AdminDashboard = () => {
               <h2 className="text-xl font-bold mb-4">Meal Statistics</h2>
               <div className="space-y-2">
                 <p>
-                  <span className="font-semibold">Breakfast:</span> {mealStats?.stats?.breakfast}
+                  <span className="font-semibold">Breakfast:</span> {mealStats?.stats?.breakfast || 0}
                 </p>
                 <p>
-                  <span className="font-semibold">Lunch:</span> {mealStats?.stats?.lunch}
+                  <span className="font-semibold">Lunch:</span> {mealStats?.stats?.lunch || 0}
                 </p>
                 <p>
-                  <span className="font-semibold">Dinner:</span> {mealStats?.stats?.dinner}
+                  <span className="font-semibold">Dinner:</span> {mealStats?.stats?.dinner || 0}
                 </p>
-                <p className="text-lg font-bold pt-2">Total: {mealStats?.stats?.total}</p>
+                <p className="text-lg font-bold pt-2">Total: {mealStats?.stats?.total || 0}</p>
               </div>
             </div>
             <div className="bg-white rounded-lg shadow p-6">
@@ -492,7 +587,7 @@ export const AdminDashboard = () => {
                 <p className="text-3xl font-bold text-yellow-600">
                   {eggStats?.eggCount || 0}
                 </p>
-                <p className="text-gray-600">Eggs distributed this week</p>
+                <p className="text-gray-600">Eggs distributed this month</p>
               </div>
             </div>
           </div>
@@ -502,30 +597,69 @@ export const AdminDashboard = () => {
         {activeTab === 'settings' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">Meal Pricing</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {prices && (
-                <>
-                  <div>
-                    <label className="block text-gray-600 font-semibold mb-2">
-                      Breakfast Price (₹)
-                    </label>
-                    <p className="text-2xl font-bold text-blue-600">{prices.breakfast}</p>
-                  </div>
-                  <div>
-                    <label className="block text-gray-600 font-semibold mb-2">
-                      Lunch Price (₹)
-                    </label>
-                    <p className="text-2xl font-bold text-green-600">{prices.lunch}</p>
-                  </div>
-                  <div>
-                    <label className="block text-gray-600 font-semibold mb-2">
-                      Dinner Price (₹)
-                    </label>
-                    <p className="text-2xl font-bold text-red-600">{prices.dinner}</p>
-                  </div>
-                </>
-              )}
-            </div>
+            {!prices && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <p className="text-yellow-800 font-semibold">
+                  ⚠️ No prices configured yet! Set the prices below to enable billing.
+                </p>
+              </div>
+            )}
+            <form onSubmit={handleSetPrices}>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-gray-600 font-semibold mb-2">
+                    🍳 Breakfast Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={priceForm.breakfast}
+                    onChange={(e) => setPriceForm({ ...priceForm, breakfast: e.target.value })}
+                    placeholder="e.g. 30"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-xl font-bold text-blue-600"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-600 font-semibold mb-2">
+                    🥗 Lunch Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={priceForm.lunch}
+                    onChange={(e) => setPriceForm({ ...priceForm, lunch: e.target.value })}
+                    placeholder="e.g. 50"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-xl font-bold text-green-600"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-600 font-semibold mb-2">
+                    🍖 Dinner Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={priceForm.dinner}
+                    onChange={(e) => setPriceForm({ ...priceForm, dinner: e.target.value })}
+                    placeholder="e.g. 50"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-xl font-bold text-red-600"
+                    required
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={priceLoading}
+                className="mt-6 bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+              >
+                {priceLoading ? '⏳ Saving...' : '💾 Save Prices'}
+              </button>
+            </form>
           </div>
         )}
       </main>

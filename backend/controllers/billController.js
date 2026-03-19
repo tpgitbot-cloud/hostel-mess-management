@@ -43,7 +43,17 @@ export const getStudentBill = async (req, res) => {
     const latestPrice = await Price.findOne().sort({ createdAt: -1 });
 
     if (!latestPrice) {
-      return res.status(404).json({ error: 'Price configuration not found' });
+      // Return zero bill if prices not configured
+      return res.status(200).json({
+        studentId,
+        studentName: student.name,
+        month: startOfMonth.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        mealCount,
+        prices: { breakfast: 0, lunch: 0, dinner: 0 },
+        totalBill: 0,
+        meals: meals.length,
+        _pricesNotConfigured: true,
+      });
     }
 
     // Calculate bill
