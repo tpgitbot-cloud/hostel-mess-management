@@ -12,6 +12,9 @@ export const ProtectedRoute = ({ children, requiredRole }) => {
 
     if (!token) {
       setIsAuthorized(false);
+    } else if (requiredRole === 'admin' && (userRole === 'master_admin' || userRole === 'staff')) {
+      // Both master_admin and staff can access admin routes
+      setIsAuthorized(true);
     } else if (requiredRole && userRole !== requiredRole) {
       setIsAuthorized(false);
     } else {

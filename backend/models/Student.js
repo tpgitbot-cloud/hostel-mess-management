@@ -25,6 +25,11 @@ const studentSchema = new mongoose.Schema(
       required: [true, 'Year is required'],
       enum: [1, 2, 3, 4],
     },
+    hostel: {
+      type: String,
+      required: [true, 'Hostel is required'],
+      enum: ['B1', 'B2', 'B3', 'G1', 'G2'],
+    },
     mobile: {
       type: String,
       required: [true, 'Mobile number is required'],
@@ -45,17 +50,13 @@ const studentSchema = new mongoose.Schema(
       select: false,
       minlength: [6, 'Password must be at least 6 characters'],
     },
-    isActive: {
+    isFirstLogin: {
       type: Boolean,
       default: true,
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
+    isActive: {
+      type: Boolean,
+      default: true,
     },
   },
   { timestamps: true }

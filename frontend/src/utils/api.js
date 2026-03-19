@@ -53,6 +53,7 @@ export const billAPI = {
 };
 
 export const adminAPI = {
+  // Student management
   addStudent: (formData) =>
     api.post('/admin/add-student', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -72,10 +73,26 @@ export const adminAPI = {
     }),
   deleteStudent: (id) =>
     api.delete(`/admin/student/${id}`),
+
+  // Staff management
+  addStaff: (data) =>
+    api.post('/admin/add-staff', data),
+  getStaff: () =>
+    api.get('/admin/staff'),
+  deleteStaff: (id) =>
+    api.delete(`/admin/staff/${id}`),
+
+  // Meal status
+  getMealStatus: (params) =>
+    api.get('/admin/meal-status', { params }),
+
+  // Stats
   getMealStats: (params) =>
     api.get('/admin/stats/meals', { params }),
   getEggStats: (params) =>
     api.get('/admin/stats/eggs', { params }),
+
+  // Prices
   setPrices: (breakfast, lunch, dinner) =>
     api.post('/admin/prices', { breakfast, lunch, dinner }),
   getPrices: () =>

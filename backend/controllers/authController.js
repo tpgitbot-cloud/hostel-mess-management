@@ -11,7 +11,7 @@ export const studentLogin = async (req, res) => {
       return res.status(400).json({ error: 'Register number and password are required' });
     }
 
-    const student = await Student.findOne({ registerNumber }).select('+password');
+    const student = await Student.findOne({ registerNumber: registerNumber.toUpperCase() }).select('+password');
     if (!student) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -30,6 +30,7 @@ export const studentLogin = async (req, res) => {
       message: 'Login successful',
       token,
       student: student.toJSON(),
+      isFirstLogin: student.isFirstLogin,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -44,9 +45,13 @@ export const adminLogin = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const admin = await Admin.findOne({ email }).select('+password');
+    const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+password');
     if (!admin) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (!admin.isActive) {
+      return res.status(403).json({ error: 'Account is inactive' });
     }
 
     const isPasswordMatch = await admin.matchPassword(password);
@@ -54,11 +59,12 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = generateToken(admin._id, 'admin');
+    const token = generateToken(admin._id, admin.role, admin.hostel);
     res.status(200).json({
       message: 'Admin login successful',
       token,
       admin: admin.toJSON(),
+      isFirstLogin: admin.isFirstLogin,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -77,20 +83,45 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
 
-    const student = await Student.findById(req.user.id).select('+password');
-    if (!student) {
-      return res.status(404).json({ error: 'Student not found' });
+    const role = req.user?.role;
+
+    if (role === 'student') {
+      const student = await Student.findById(req.user.id).select('+password');
+      if (!student) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      const isPasswordMatch = await student.matchPassword(currentPassword);
+      if (!isPasswordMatch) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+
+      student.password = newPassword;
+      student.isFirstLogin = false;
+      await student.save();
+
+      return res.status(200).json({ message: 'Password changed successfully' });
     }
 
-    const isPasswordMatch = await student.matchPassword(currentPassword);
-    if (!isPasswordMatch) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
+    if (role === 'master_admin' || role === 'staff') {
+      const admin = await Admin.findById(req.user.id).select('+password');
+      if (!admin) {
+        return res.status(404).json({ error: 'Admin not found' });
+      }
+
+      const isPasswordMatch = await admin.matchPassword(currentPassword);
+      if (!isPasswordMatch) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+
+      admin.password = newPassword;
+      admin.isFirstLogin = false;
+      await admin.save();
+
+      return res.status(200).json({ message: 'Password changed successfully' });
     }
 
-    student.password = newPassword;
-    await student.save();
-
-    res.status(200).json({ message: 'Password changed successfully' });
+    return res.status(400).json({ error: 'Invalid role' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

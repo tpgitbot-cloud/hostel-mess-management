@@ -23,20 +23,21 @@ const adminSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      default: 'admin',
-      enum: ['admin', 'superadmin'],
+      default: 'staff',
+      enum: ['master_admin', 'staff'],
+    },
+    hostel: {
+      type: String,
+      enum: ['B1', 'B2', 'B3', 'G1', 'G2', 'ALL'],
+      default: 'ALL',
+    },
+    isFirstLogin: {
+      type: Boolean,
+      default: true,
     },
     isActive: {
       type: Boolean,
       default: true,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
     },
   },
   { timestamps: true }

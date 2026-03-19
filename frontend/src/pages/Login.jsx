@@ -38,6 +38,7 @@ export const Login = () => {
         studentForm.password
       );
       saveUser(response.data.student, response.data.token);
+      localStorage.setItem('isFirstLogin', response.data.isFirstLogin ? 'true' : 'false');
       toast.success('Login successful!');
       setTimeout(() => navigate('/dashboard'), 1000);
     } catch (error) {
@@ -54,6 +55,7 @@ export const Login = () => {
     try {
       const response = await authAPI.adminLogin(adminForm.email, adminForm.password);
       saveUser(response.data.admin, response.data.token);
+      localStorage.setItem('isFirstLogin', response.data.isFirstLogin ? 'true' : 'false');
       toast.success('Admin login successful!');
       setTimeout(() => navigate('/admin/dashboard'), 1000);
     } catch (error) {

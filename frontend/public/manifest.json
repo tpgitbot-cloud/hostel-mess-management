@@ -1,0 +1,27 @@
+{
+  "name": "Hostel Mess Management",
+  "short_name": "Mess App",
+  "description": "Smart Hostel Mess Management System - QR scanning, billing, and analytics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e40af",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["education", "food"],
+  "lang": "en-IN"
+}
