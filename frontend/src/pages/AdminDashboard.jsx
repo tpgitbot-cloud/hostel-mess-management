@@ -223,7 +223,7 @@ export const AdminDashboard = () => {
     if (!w) return;
     w.document.write(`<html><head><title>QR - ${mealType}</title></head>
       <body style="text-align:center;font-family:Arial;padding:40px;">
-      <h1 style="color:#2563eb;">🏫 Hostel Mess</h1>
+      <h1 style="color:#2563eb;">🏫 TPGIT Hostel Mess</h1>
       <h2>${mealType}</h2>${new XMLSerializer().serializeToString(el)}
       <p style="color:#999;margin-top:20px;">Scan with phone camera</p>
       <script>window.onload=function(){window.print();}<\/script></body></html>`);
@@ -293,7 +293,7 @@ export const AdminDashboard = () => {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div>
-            <h1 className="text-xl font-bold text-blue-600">🏫 Hostel Mess Admin</h1>
+            <h1 className="text-xl font-bold text-blue-600">🏫 TPGIT Hostel Mess</h1>
             <p className="text-xs text-gray-500">
               {user.name} • {isMasterAdmin ? '👑 Master Admin' : `📋 Staff (${user.hostel})`}
             </p>

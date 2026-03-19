@@ -71,7 +71,7 @@ export const Login = () => {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-lg shadow-2xl p-8">
           <h1 className="text-3xl font-bold text-center text-gray-800 mb-8">
-            🏫 Hostel Mess Management
+            🏫 TPGIT Hostel Mess
           </h1>
 
           <div className="flex gap-4 mb-6">

@@ -9,7 +9,7 @@ export const Home = () => {
       {/* Navigation */}
       <nav className="bg-white shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-blue-600">🏫 Hostel Mess Management</h1>
+          <h1 className="text-2xl font-bold text-blue-600">🏫 TPGIT Hostel Mess</h1>
           <button
             onClick={() => navigate('/login')}
             className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
@@ -21,7 +21,7 @@ export const Home = () => {
 
       {/* Main Content */}
       <section className="max-w-6xl mx-auto px-4 py-20 text-center text-white">
-        <h2 className="text-5xl font-bold mb-6">Smart Hostel Mess Management System</h2>
+        <h2 className="text-5xl font-bold mb-6">TPGIT Hostel Mess</h2>
         <p className="text-xl mb-8">
           Streamline meal tracking, billing, and admin control with QR code scanning and real-time analytics
         </p>
@@ -71,7 +71,7 @@ export const Home = () => {
 
       {/* Footer */}
       <footer className="bg-gray-800 text-white py-6 text-center">
-        <p>&copy; 2026 Smart Hostel Mess Management System. All rights reserved.</p>
+        <p>&copy; 2026 TPGIT Hostel Mess. All rights reserved.</p>
       </footer>
     </div>
   );

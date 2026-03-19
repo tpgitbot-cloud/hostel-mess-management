@@ -1,7 +1,7 @@
 {
-  "name": "Hostel Mess Management",
-  "short_name": "Mess App",
-  "description": "Smart Hostel Mess Management System - QR scanning, billing, and analytics",
+  "name": "TPGIT Hostel Mess",
+  "short_name": "TPGIT Mess",
+  "description": "TPGIT Hostel Mess - Smart meal tracking, QR scanning, billing, and analytics",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1e40af",
