@@ -54,25 +54,6 @@ export const Login = () => {
     };
   }, []);
 
-  // Safe stream attachment for face login
-  useEffect(() => {
-    if (loginMode === 'face' && cameraActive && streamRef.current && videoRef.current) {
-      const video = videoRef.current;
-      video.srcObject = streamRef.current;
-      
-      const onPlay = () => {
-        console.log('Login video playing, starting loop');
-        startDetectionLoop();
-      };
-      
-      video.addEventListener('playing', onPlay);
-      video.play().catch(e => console.error("Login play error:", e));
-      
-      return () => {
-        video.removeEventListener('playing', onPlay);
-      };
-    }
-  }, [loginMode, cameraActive, startDetectionLoop]);
 
   const handleStudentChange = (e) => {
     setStudentForm({ ...studentForm, [e.target.name]: e.target.value });
@@ -224,7 +205,27 @@ export const Login = () => {
       animFrameRef.current = requestAnimationFrame(detect);
     };
     detect();
-  }, []);
+  }, [stopCamera]); // Dependency was wrong earlier, should be a cleanup-safe dep
+
+  // Safe stream attachment for face login
+  useEffect(() => {
+    if (loginMode === 'face' && cameraActive && streamRef.current && videoRef.current) {
+      const video = videoRef.current;
+      video.srcObject = streamRef.current;
+      
+      const onPlay = () => {
+        console.log('Login video playing, starting loop');
+        startDetectionLoop();
+      };
+      
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Login play error:", e));
+      
+      return () => {
+        video.removeEventListener('playing', onPlay);
+      };
+    }
+  }, [loginMode, cameraActive, startDetectionLoop]);
 
   const handleFaceScan = async () => {
     const faceapi = faceapiRef.current;

@@ -227,26 +227,8 @@ export const AdminDashboard = () => {
   };
 
   // Safe stream attachment for admin scanner
-  useEffect(() => {
-    if (activeTab === 'face-scanner' && faceScannerActive && faceStreamRef.current && faceVideoRef.current) {
-      const video = faceVideoRef.current;
-      video.srcObject = faceStreamRef.current;
-      
-      const onPlay = () => {
-        console.log('Admin scanner playing, starting loop');
-        startFaceDetectionLoop();
-      };
-      
-      video.addEventListener('playing', onPlay);
-      video.play().catch(e => console.error("Admin scan play error:", e));
-      
-      return () => {
-        video.removeEventListener('playing', onPlay);
-      };
-    }
-  }, [activeTab, faceScannerActive, startFaceDetectionLoop]);
 
-  const startFaceDetectionLoop = () => {
+  const startFaceDetectionLoop = React.useCallback(() => {
     const faceapi = faceapiRef.current;
     if (!faceapi) return;
 
@@ -278,7 +260,27 @@ export const AdminDashboard = () => {
       faceAnimRef.current = requestAnimationFrame(detect);
     };
     detect();
-  };
+  }, []);
+
+  // Safe stream attachment for admin scanner
+  useEffect(() => {
+    if (activeTab === 'face-scanner' && faceScannerActive && faceStreamRef.current && faceVideoRef.current) {
+      const video = faceVideoRef.current;
+      video.srcObject = faceStreamRef.current;
+      
+      const onPlay = () => {
+        console.log('Admin scanner playing, starting loop');
+        startFaceDetectionLoop();
+      };
+      
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Admin scan play error:", e));
+      
+      return () => {
+        video.removeEventListener('playing', onPlay);
+      };
+    }
+  }, [activeTab, faceScannerActive, startFaceDetectionLoop]);
 
   const handleAdminFaceScan = async () => {
     const faceapi = faceapiRef.current;
