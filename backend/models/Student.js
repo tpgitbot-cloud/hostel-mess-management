@@ -58,6 +58,15 @@ const studentSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    faceDescriptor: {
+      type: [Number],
+      default: [],
+      select: false,
+    },
+    faceRegistered: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
@@ -84,6 +93,7 @@ studentSchema.methods.matchPassword = async function (enteredPassword) {
 studentSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
+  delete obj.faceDescriptor;
   return obj;
 };
 

@@ -15,10 +15,11 @@ This runs:
 
 ## Test Credentials
 
-### Student (After Creating)
+### Student (Initial Login)
 ```
 Register Number: CSE001
-Password: password123
+Initial Password: CSE001 (Same as Register Number)
+Note: You will be forced to change this on first login.
 ```
 
 ### Admin (Create in MongoDB First)
@@ -31,19 +32,48 @@ Password: adminpass123
 
 ## Manual Testing Flow
 
-### 1. Student Registration & Login
-- [ ] Navigate to `/login`
-- [ ] Click "Student" tab
-- [ ] Enter register number: CSE001
-- [ ] Enter password: password123
-- [ ] Click "Student Login"
-- [ ] Should redirect to `/dashboard`
+### 1. Student Signup & Face Registration
+- [ ] Navigate to `/signup`
+- [ ] Fill all fields (Name, Reg No: CSE002, Dept, Year, Hostel, Mobile, Password)
+- [ ] Click "Sign Up & Continue"
+- [ ] Should redirect to `/face-registration`
+- [ ] Grant camera permissions
+- [ ] Click "Capture Face" 5 times (follow on-screen prompts)
+- [ ] Verify 5 thumbnails appear
+- [ ] Click "Register Face"
+- [ ] Should show "Face Registered!" and redirect to `/dashboard`
 
 ### 2. Student Dashboard
 - [ ] Verify student info displays (name, register number, department, year, mobile)
 - [ ] Check "Today's Meals" count (should be 0 initially)
 - [ ] Check "Monthly Total" meals
 - [ ] Check "Current Bill" (calculated from meal prices)
+- [ ] **Check Face Badge**: Should show "Face Registered: ✅" (if registered)
+
+### 3. Face Login
+- [ ] Logout and go to `/login`
+- [ ] Click "Face" tab
+- [ ] Camera should open automatically
+- [ ] Align face in the green box
+- [ ] Click "Scan & Login"
+- [ ] Should identify student and log in successfully
+
+### 4. Student Face Scan (Self)
+- [ ] In Student Dashboard, click "🧬 Face Scan" tab
+- [ ] Camera should open
+- [ ] Click "Scan & Identify"
+- [ ] Once identified, click any meal button (BREAKFAST/LUNCH/DINNER)
+- [ ] Meal should be marked successfully
+
+### 5. Staff Face Scanner (Admin)
+- [ ] Login as Admin/Staff
+- [ ] Click "🧬 Face Scanner" tab
+- [ ] Click "Start Camera Scanner"
+- [ ] Point camera at a student
+- [ ] Click "🔍 Scan & Identify"
+- [ ] Verify student name/reg no appears in the results
+- [ ] Click "LUNCH" or "Mark Egg"
+- [ ] Verify success toast and attendance marked
 
 ### 3. Scanning Meals
 - [ ] Click "Scan QR" tab
@@ -87,6 +117,7 @@ Generate test QR codes containing:
 
 ### 8. Student Management
 - [ ] Click "Students" tab
+- [ ] **Check Face Column**: Should show "✅ Registered" for registered students
 - [ ] Click "Upload CSV" and select CSV file
 - [ ] Verify students are imported
 - [ ] Search for student by name/register number

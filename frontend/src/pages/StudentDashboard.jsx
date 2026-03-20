@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { scanAPI, billAPI } from '../utils/api';
+import { scanAPI, billAPI, faceAPI, authAPI } from '../utils/api';
 import { getStoredUser, clearAuth } from '../utils/auth';
 import { toast, ToastContainer } from 'react-toastify';
+
+const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
 
 export const StudentDashboard = () => {
   const navigate = useNavigate();
@@ -12,10 +14,31 @@ export const StudentDashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [scannerActive, setScannerActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const [faceRegistered, setFaceRegistered] = useState(false);
+  const [checkingFace, setCheckingFace] = useState(true);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
+
+  // Face scan state
+  const [faceScanMode, setFaceScanMode] = useState(false);
+  const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
+  const [faceModelsLoading, setFaceModelsLoading] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceScanning, setFaceScanning] = useState(false);
+  const faceVideoRef = useRef(null);
+  const faceOverlayRef = useRef(null);
+  const faceStreamRef = useRef(null);
+  const faceapiRef = useRef(null);
+  const faceAnimRef = useRef(null);
+
+  // Forced Password Change State
+  const [showForcedPasswordChange, setShowForcedPasswordChange] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     const storedUser = getStoredUser();
@@ -24,22 +47,77 @@ export const StudentDashboard = () => {
       return;
     }
     setUser(storedUser);
+    
+    // Trigger forced password change if it's the first login
+    if (storedUser.isFirstLogin) {
+      setShowForcedPasswordChange(true);
+      setCurrentPassword(storedUser.registerNumber); // They just logged in with this
+    }
+
     fetchBill(storedUser._id);
+    checkFaceRegistration();
   }, [navigate]);
+
+  const handleForcedPasswordChange = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword === currentPassword) {
+      toast.error('New password cannot be the same as the current one');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await authAPI.changePassword(currentPassword, newPassword);
+      toast.success('Password updated! You can now access your dashboard.');
+      
+      // Update stored user
+      const updatedUser = { ...user, isFirstLogin: false };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      
+      setShowForcedPasswordChange(false);
+      
+      // If they haven't registered their face yet, maybe prompt them too?
+      // For now, just continue to dashboard.
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update password');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   // Cleanup camera on unmount
   useEffect(() => {
     return () => {
       stopCamera();
+      stopFaceCamera();
     };
   }, []);
+
+  const checkFaceRegistration = async () => {
+    try {
+      const response = await faceAPI.checkFaceStatus();
+      setFaceRegistered(response.data.faceRegistered);
+    } catch (error) {
+      // Silently fail
+    } finally {
+      setCheckingFace(false);
+    }
+  };
 
   const fetchBill = async (studentId) => {
     try {
       const response = await billAPI.getStudentBill(studentId);
       setBill(response.data);
     } catch (error) {
-      // Don't show error if prices aren't configured yet
       if (error.response?.status !== 404) {
         console.error('Failed to load bill:', error);
       }
@@ -48,6 +126,7 @@ export const StudentDashboard = () => {
 
   const handleLogout = () => {
     stopCamera();
+    stopFaceCamera();
     clearAuth();
     navigate('/login');
   };
@@ -70,7 +149,6 @@ export const StudentDashboard = () => {
     setScannerActive(true);
 
     try {
-      // Request camera access
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
       });
@@ -153,6 +231,138 @@ export const StudentDashboard = () => {
     }
   };
 
+  // ===== FACE SCAN FOR MEALS =====
+
+  const stopFaceCamera = () => {
+    if (faceAnimRef.current) {
+      cancelAnimationFrame(faceAnimRef.current);
+      faceAnimRef.current = null;
+    }
+    if (faceStreamRef.current) {
+      faceStreamRef.current.getTracks().forEach((t) => t.stop());
+      faceStreamRef.current = null;
+    }
+    setFaceScanMode(false);
+    setFaceDetected(false);
+  };
+
+  const loadFaceModels = async () => {
+    if (faceModelsLoaded) return true;
+    setFaceModelsLoading(true);
+    try {
+      const faceapi = await import(
+        /* webpackIgnore: true */
+        'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
+      );
+      faceapiRef.current = faceapi;
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      setFaceModelsLoaded(true);
+      setFaceModelsLoading(false);
+      return true;
+    } catch (err) {
+      setFaceModelsLoading(false);
+      toast.error('Failed to load face models');
+      return false;
+    }
+  };
+
+  const startFaceScan = async () => {
+    stopCamera();
+    const loaded = await loadFaceModels();
+    if (!loaded) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      faceStreamRef.current = stream;
+      if (faceVideoRef.current) {
+        faceVideoRef.current.srcObject = stream;
+        await faceVideoRef.current.play();
+      }
+      setFaceScanMode(true);
+      startFaceDetectLoop();
+    } catch (err) {
+      toast.error('Camera error: ' + err.message);
+    }
+  };
+
+  const startFaceDetectLoop = useCallback(() => {
+    const faceapi = faceapiRef.current;
+    if (!faceapi) return;
+
+    const detect = async () => {
+      if (!faceVideoRef.current || faceVideoRef.current.readyState < 2) {
+        faceAnimRef.current = requestAnimationFrame(detect);
+        return;
+      }
+      try {
+        const detections = await faceapi.detectAllFaces(faceVideoRef.current).withFaceLandmarks();
+        const overlay = faceOverlayRef.current;
+        if (overlay && faceVideoRef.current) {
+          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, true);
+          const resized = faceapi.resizeResults(detections, dims);
+          const ctx = overlay.getContext('2d');
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          if (resized.length === 1) {
+            setFaceDetected(true);
+            const box = resized[0].detection.box;
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+          } else {
+            setFaceDetected(false);
+          }
+        }
+      } catch (e) {}
+      faceAnimRef.current = requestAnimationFrame(detect);
+    };
+    detect();
+  }, []);
+
+  const handleFaceMealScan = async (mealType) => {
+    const faceapi = faceapiRef.current;
+    if (!faceapi || !faceVideoRef.current) return;
+
+    setFaceScanning(true);
+    try {
+      const detection = await faceapi
+        .detectSingleFace(faceVideoRef.current)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        toast.error('No face detected. Please face the camera.');
+        setFaceScanning(false);
+        return;
+      }
+
+      // Use the face scan to verify identity, then mark the meal
+      const descriptor = Array.from(detection.descriptor);
+      const identifyRes = await faceAPI.faceScanMeal(descriptor, mealType);
+      const identifiedStudent = identifyRes.data.student;
+
+      // Verify it's the same student
+      if (identifiedStudent._id !== user._id) {
+        toast.error('Face does not match your profile!');
+        setFaceScanning(false);
+        return;
+      }
+
+      // Mark the meal
+      await scanAPI.scanMeal(mealType, user._id);
+      toast.success(`✅ ${mealType} scanned via face recognition!`);
+      fetchBill(user._id);
+      stopFaceCamera();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Face scan failed');
+    } finally {
+      setFaceScanning(false);
+    }
+  };
+
   if (!user) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>Loading...</div>;
   }
@@ -163,6 +373,61 @@ export const StudentDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-100">
       <ToastContainer position="top-right" autoClose={3000} />
+
+      {/* Forced Password Change Modal */}
+      {showForcedPasswordChange && (
+        <div className="fixed inset-0 z-[100] bg-gray-900/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md animate-fade-in shadow-blue-500/20">
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-4">🔐</div>
+              <h2 className="text-2xl font-bold text-gray-800">Secure Your Account</h2>
+              <p className="text-gray-500 mt-2 text-sm">
+                This is your first login. For security reasons, you must change your default password.
+              </p>
+            </div>
+
+            <form onSubmit={handleForcedPasswordChange} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Min 6 characters"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Retype password"
+                  required
+                />
+              </div>
+
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  disabled={changingPassword}
+                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {changingPassword ? 'Updating Password...' : 'Save & Continue'}
+                </button>
+              </div>
+            </form>
+
+            <p className="text-[10px] text-center text-gray-400 mt-6 uppercase tracking-widest font-bold">
+              Default Password Hint: {user?.registerNumber}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header className="bg-white shadow">
@@ -180,21 +445,23 @@ export const StudentDashboard = () => {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto p-4">
         {/* Tabs */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-2 mb-6 flex-wrap">
           {[
             { id: 'home', label: '🏠 Home' },
             { id: 'scan', label: '📷 Scan QR' },
+            { id: 'face-scan', label: '🧬 Face Scan' },
             { id: 'profile', label: '👤 Profile' },
           ].map(({ id, label }) => (
             <button
               key={id}
               onClick={() => {
                 if (id !== 'scan') stopCamera();
+                if (id !== 'face-scan') stopFaceCamera();
                 setActiveTab(id);
               }}
-              className={`px-6 py-2 rounded-lg font-semibold ${
+              className={`px-5 py-2 rounded-lg font-semibold text-sm ${
                 activeTab === id
-                  ? 'bg-blue-600 text-white'
+                  ? id === 'face-scan' ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -211,6 +478,36 @@ export const StudentDashboard = () => {
                 👋 Welcome, <strong>{user.name}</strong>! ({user.registerNumber})
               </p>
             </div>
+
+            {/* Face Registration Banner */}
+            {!checkingFace && !faceRegistered && (
+              <div className="face-register-banner">
+                <div className="face-register-banner-content">
+                  <div className="face-register-banner-icon">🧬</div>
+                  <div>
+                    <h3 className="face-register-banner-title">Register Your Face</h3>
+                    <p className="face-register-banner-desc">
+                      Enable face-based login & meal scanning for faster access
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/face-registration')}
+                  className="face-register-banner-btn"
+                >
+                  Register Now →
+                </button>
+              </div>
+            )}
+
+            {!checkingFace && faceRegistered && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-4 flex items-center gap-2">
+                <span className="text-xl">✅</span>
+                <p className="text-emerald-700 text-sm font-medium">
+                  Face registered! You can use face login and face-based meal scanning.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-white rounded-lg shadow p-6">
@@ -294,7 +591,6 @@ export const StudentDashboard = () => {
                     style={{ width: '100%', display: 'block' }}
                   />
                   <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  {/* Scan overlay */}
                   <div
                     style={{
                       position: 'absolute',
@@ -317,6 +613,86 @@ export const StudentDashboard = () => {
                   className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700"
                 >
                   ✕ Cancel Scan
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Face Scan Tab */}
+        {activeTab === 'face-scan' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-4">🧬 Face Meal Scanner</h2>
+
+            {!faceRegistered ? (
+              <div className="text-center py-8">
+                <div className="text-6xl mb-4">🧬</div>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">Face Not Registered</h3>
+                <p className="text-gray-500 mb-6">
+                  You need to register your face before using face-based meal scanning.
+                </p>
+                <button
+                  onClick={() => navigate('/face-registration')}
+                  className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-emerald-700"
+                >
+                  🧬 Register Face
+                </button>
+              </div>
+            ) : !faceScanMode ? (
+              <div className="space-y-4">
+                <p className="text-gray-600 mb-4">
+                  Use your face to quickly scan and verify your meal attendance.
+                </p>
+                <button
+                  onClick={startFaceScan}
+                  disabled={faceModelsLoading}
+                  className="w-full bg-emerald-600 text-white py-4 rounded-lg font-semibold hover:bg-emerald-700 text-lg disabled:opacity-50"
+                >
+                  {faceModelsLoading ? '⏳ Loading models...' : '🎥 Open Face Scanner'}
+                </button>
+                <button
+                  onClick={handleEggScan}
+                  disabled={loading}
+                  className="w-full bg-yellow-500 text-white py-4 rounded-lg font-semibold hover:bg-yellow-600 text-lg disabled:opacity-50"
+                >
+                  {loading ? '⏳ Processing...' : '🥚 Collect Egg (Thursday Only)'}
+                </button>
+              </div>
+            ) : (
+              <div>
+                {/* Camera */}
+                <div className="face-login-camera-wrapper mb-4">
+                  <video ref={faceVideoRef} autoPlay playsInline muted className="face-login-video" />
+                  <canvas ref={faceOverlayRef} className="face-login-overlay" />
+                  <div className={`face-login-indicator ${faceDetected ? 'detected' : ''}`}>
+                    {faceDetected ? '✅ Face Detected' : '⚠️ Looking for face...'}
+                  </div>
+                </div>
+
+                {/* Meal Buttons */}
+                <p className="text-gray-600 text-center mb-4">Select your meal to scan:</p>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {[
+                    { type: 'BREAKFAST', emoji: '🍳', color: 'bg-orange-500 hover:bg-orange-600' },
+                    { type: 'LUNCH', emoji: '🥗', color: 'bg-green-500 hover:bg-green-600' },
+                    { type: 'DINNER', emoji: '🍖', color: 'bg-purple-500 hover:bg-purple-600' },
+                  ].map(({ type, emoji, color }) => (
+                    <button
+                      key={type}
+                      onClick={() => handleFaceMealScan(type)}
+                      disabled={!faceDetected || faceScanning}
+                      className={`${color} text-white py-4 rounded-lg font-semibold text-sm disabled:opacity-50 transition`}
+                    >
+                      {faceScanning ? '⏳' : emoji}<br />{type}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={stopFaceCamera}
+                  className="w-full bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                >
+                  ✕ Close Scanner
                 </button>
               </div>
             )}
@@ -352,7 +728,24 @@ export const StudentDashboard = () => {
                 <p className="text-gray-600">Email</p>
                 <p className="text-lg font-semibold">{user.email || 'N/A'}</p>
               </div>
+              <div>
+                <p className="text-gray-600">Face Registration</p>
+                <p className={`text-lg font-semibold ${faceRegistered ? 'text-emerald-600' : 'text-gray-400'}`}>
+                  {checkingFace ? 'Checking...' : faceRegistered ? '✅ Registered' : '❌ Not Registered'}
+                </p>
+              </div>
             </div>
+
+            {!checkingFace && !faceRegistered && (
+              <div className="mt-6 pt-4 border-t">
+                <button
+                  onClick={() => navigate('/face-registration')}
+                  className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-emerald-700"
+                >
+                  🧬 Register Face
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>

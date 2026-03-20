@@ -127,4 +127,52 @@ export const changePassword = async (req, res) => {
   }
 };
 
-export default { studentLogin, adminLogin, changePassword };
+export const studentSignup = async (req, res) => {
+  try {
+    const { name, registerNumber, password, department, year, hostel, mobile, email } = req.body;
+
+    if (!name || !registerNumber || !password || !department || !year || !hostel || !mobile) {
+      return res.status(400).json({ error: 'All required fields must be provided' });
+    }
+
+    if (!validatePassword(password)) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const existingStudent = await Student.findOne({ registerNumber: registerNumber.toUpperCase() });
+    if (existingStudent) {
+      if (!existingStudent.isActive) {
+        // If an inactive record exists, replace it
+        await Student.findByIdAndDelete(existingStudent._id);
+      } else {
+        return res.status(409).json({ error: 'Student with this register number already exists' });
+      }
+    }
+
+    const student = new Student({
+      name,
+      registerNumber: registerNumber.toUpperCase(),
+      password,
+      department,
+      year: parseInt(year),
+      hostel,
+      mobile,
+      email: email?.toLowerCase(),
+      isFirstLogin: false, // Student set their own password during signup
+    });
+
+    await student.save();
+
+    const token = generateToken(student._id, 'student');
+    res.status(201).json({
+      message: 'Signup successful!',
+      token,
+      student: student.toJSON(),
+      isFirstLogin: false,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export default { studentLogin, adminLogin, changePassword, studentSignup };

@@ -44,8 +44,8 @@ export const addStudent = async (req, res) => {
       }
     }
 
-    // Auto-generate password
-    const autoPassword = generatePassword(8);
+    // Initial password is their register number
+    const initialPassword = registerNumber.trim().toUpperCase();
 
     // Handle photo upload
     let photoUrl = null;
@@ -68,16 +68,15 @@ export const addStudent = async (req, res) => {
       mobile,
       email,
       photo: photoUrl,
-      password: autoPassword,
+      password: initialPassword,
       isFirstLogin: true,
     });
 
     await student.save();
 
     res.status(201).json({
-      message: 'Student added successfully',
+      message: 'Student added successfully! They can login using their Register Number as the initial password.',
       student: student.toJSON(),
-      generatedPassword: autoPassword, // Show once for admin to note down
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -128,7 +127,7 @@ export const uploadStudentsCSV = async (req, res) => {
               }
             }
 
-            const autoPassword = generatePassword(8);
+            const initialPassword = registerNumber.trim().toUpperCase();
 
             const student = new Student({
               name,
@@ -138,7 +137,7 @@ export const uploadStudentsCSV = async (req, res) => {
               hostel: hostel.toUpperCase(),
               mobile,
               email,
-              password: autoPassword,
+              password: initialPassword,
               isFirstLogin: true,
             });
 
@@ -147,7 +146,6 @@ export const uploadStudentsCSV = async (req, res) => {
             addedStudents.push({
               name,
               registerNumber: registerNumber.toUpperCase(),
-              password: autoPassword,
             });
           } catch (error) {
             errors.push({ row, error: error.message });

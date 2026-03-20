@@ -34,6 +34,8 @@ api.interceptors.response.use(
 export const authAPI = {
   studentLogin: (registerNumber, password) =>
     api.post('/auth/student-login', { registerNumber, password }),
+  studentSignup: (formData) =>
+    api.post('/auth/student-signup', formData),
   adminLogin: (email, password) =>
     api.post('/auth/admin-login', { email, password }),
   changePassword: (currentPassword, newPassword) =>
@@ -97,6 +99,17 @@ export const adminAPI = {
     api.post('/admin/prices', { breakfast, lunch, dinner }),
   getPrices: () =>
     api.get('/admin/prices/current'),
+};
+
+export const faceAPI = {
+  registerFace: (faceDescriptor) =>
+    api.post('/face/register', { faceDescriptor }),
+  faceLogin: (faceDescriptor) =>
+    api.post('/face/login', { faceDescriptor }),
+  checkFaceStatus: () =>
+    api.get('/face/status'),
+  faceScanMeal: (faceDescriptor, mealType) =>
+    api.post('/face/scan-meal', { faceDescriptor, mealType }),
 };
 
 export default api;

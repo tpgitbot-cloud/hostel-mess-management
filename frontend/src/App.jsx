@@ -4,8 +4,10 @@ import ProtectedRoute from './components/ProtectedRoute';
 import InstallPrompt from './components/InstallPrompt';
 import Home from './pages/Home';
 import Login from './pages/Login';
+import Signup from './pages/Signup';
 import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import FaceRegistration from './pages/FaceRegistration';
 
 function App() {
   return (
@@ -14,6 +16,15 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route
+          path="/face-registration"
+          element={
+            <ProtectedRoute requiredRole="student">
+              <FaceRegistration />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard"
           element={

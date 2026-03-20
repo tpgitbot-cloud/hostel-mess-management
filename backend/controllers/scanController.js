@@ -15,9 +15,9 @@ export const scanMeal = async (req, res) => {
       return res.status(400).json({ error: 'Invalid meal type' });
     }
 
-    // Check if user is authenticated
-    const authStudentId = req.user?.id;
-    if (!authStudentId || authStudentId !== studentId) {
+    // Check authorization: Student can only scan for self, Admin/Staff can scan for anyone
+    const isStaff = ['admin', 'master_admin'].includes(req.user?.role);
+    if (!isStaff && req.user?.id !== studentId) {
       return res.status(403).json({ error: 'Unauthorized access' });
     }
 
@@ -84,9 +84,9 @@ export const scanEgg = async (req, res) => {
       return res.status(400).json({ error: 'Student ID is required' });
     }
 
-    // Check if user is authenticated
-    const authStudentId = req.user?.id;
-    if (!authStudentId || authStudentId !== studentId) {
+    // Check authorization: Student can only scan for self, Admin/Staff can scan for anyone
+    const isStaff = ['admin', 'master_admin'].includes(req.user?.role);
+    if (!isStaff && req.user?.id !== studentId) {
       return res.status(403).json({ error: 'Unauthorized access' });
     }
 

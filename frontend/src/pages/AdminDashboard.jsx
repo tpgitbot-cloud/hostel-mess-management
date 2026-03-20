@@ -52,9 +52,23 @@ export const AdminDashboard = () => {
   const [statusSort, setStatusSort] = useState({ field: 'name', dir: 'asc' });
   const [statusLoading, setStatusLoading] = useState(false);
 
-  // First login password change
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', newPass: '', confirm: '' });
+
+  // Face Scanner State
+  const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
+  const [faceModelsLoading, setFaceModelsLoading] = useState(false);
+  const [faceScannerActive, setFaceScannerActive] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceScanning, setFaceScanning] = useState(false);
+  const [identifiedStudent, setIdentifiedStudent] = useState(null);
+  const [scanMessage, setScanMessage] = useState('');
+
+  const faceVideoRef = React.useRef(null);
+  const faceOverlayRef = React.useRef(null);
+  const faceStreamRef = React.useRef(null);
+  const faceapiRef = React.useRef(null);
+  const faceAnimRef = React.useRef(null);
 
   const isMasterAdmin = user?.role === 'master_admin';
 
@@ -116,7 +130,155 @@ export const AdminDashboard = () => {
     }
   };
 
-  // ===== Student CRUD =====
+  useEffect(() => {
+    return () => {
+      stopFaceScanner();
+    };
+  }, []);
+
+  const loadFaceModels = async () => {
+    if (faceModelsLoaded) return true;
+    setFaceModelsLoading(true);
+    try {
+      const faceapi = await import(
+        /* webpackIgnore: true */
+        'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
+      );
+      faceapiRef.current = faceapi;
+      const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      setFaceModelsLoaded(true);
+      setFaceModelsLoading(false);
+      return true;
+    } catch (error) {
+      console.error('Failed to load face models:', error);
+      setFaceModelsLoading(false);
+      toast.error('Failed to load face detection models');
+      return false;
+    }
+  };
+
+  const stopFaceScanner = () => {
+    if (faceAnimRef.current) cancelAnimationFrame(faceAnimRef.current);
+    if (faceStreamRef.current) {
+      faceStreamRef.current.getTracks().forEach((t) => t.stop());
+      faceStreamRef.current = null;
+    }
+    setFaceScannerActive(false);
+    setIdentifiedStudent(null);
+    setScanMessage('');
+  };
+
+  const startFaceScanner = async () => {
+    const loaded = await loadFaceModels();
+    if (!loaded) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      faceStreamRef.current = stream;
+      if (faceVideoRef.current) {
+        faceVideoRef.current.srcObject = stream;
+        await faceVideoRef.current.play();
+      }
+      setFaceScannerActive(true);
+      startFaceDetectionLoop();
+    } catch (err) {
+      toast.error('Camera error: ' + err.message);
+    }
+  };
+
+  const startFaceDetectionLoop = () => {
+    const faceapi = faceapiRef.current;
+    if (!faceapi) return;
+
+    const detect = async () => {
+      if (!faceVideoRef.current || faceVideoRef.current.readyState < 2) {
+        faceAnimRef.current = requestAnimationFrame(detect);
+        return;
+      }
+      try {
+        const detections = await faceapi.detectAllFaces(faceVideoRef.current).withFaceLandmarks();
+        const overlay = faceOverlayRef.current;
+        if (overlay && faceVideoRef.current) {
+          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, true);
+          const resized = faceapi.resizeResults(detections, dims);
+          const ctx = overlay.getContext('2d');
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          if (resized.length === 1) {
+            setFaceDetected(true);
+            const box = resized[0].detection.box;
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+          } else {
+            setFaceDetected(false);
+          }
+        }
+      } catch (e) {}
+      faceAnimRef.current = requestAnimationFrame(detect);
+    };
+    detect();
+  };
+
+  const handleAdminFaceScan = async () => {
+    const faceapi = faceapiRef.current;
+    if (!faceapi || !faceVideoRef.current) return;
+
+    setFaceScanning(true);
+    setScanMessage('Scanning face...');
+    try {
+      const detection = await faceapi
+        .detectSingleFace(faceVideoRef.current)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        toast.error('No face detected');
+        setFaceScanning(false);
+        setScanMessage('');
+        return;
+      }
+
+      const descriptor = Array.from(detection.descriptor);
+      const res = await import('../utils/api').then(m => m.faceAPI.faceScanMeal(descriptor, 'BREAKFAST')); // use dummy mealType for identification
+      setIdentifiedStudent(res.data.student);
+      setScanMessage(`Identified: ${res.data.student.name} (${res.data.matchConfidence}% confidence)`);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Identification failed');
+      setScanMessage('');
+    } finally {
+      setFaceScanning(false);
+    }
+  };
+
+  const markMealForStudent = async (mealType) => {
+    if (!identifiedStudent) return;
+    try {
+      await import('../utils/api').then(m => m.scanAPI.scanMeal(mealType, identifiedStudent._id));
+      toast.success(`${mealType} marked for ${identifiedStudent.name}`);
+      setScanMessage(`✅ ${mealType} Marked!`);
+      // Optional: keep identified student visible for a moment
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Marking meal failed');
+    }
+  };
+
+  const markEggForStudent = async () => {
+    if (!identifiedStudent) return;
+    try {
+      await import('../utils/api').then(m => m.scanAPI.scanEgg(identifiedStudent._id));
+      toast.success(`Egg marked for ${identifiedStudent.name}`);
+      setScanMessage(`✅ Egg Marked!`);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Marking egg failed');
+    }
+  };
+
+  // Student CRUD and other methods continue...
   const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newStudent.name || !newStudent.registerNumber || !newStudent.mobile || !newStudent.hostel) {
@@ -138,8 +300,7 @@ export const AdminDashboard = () => {
       if (newStudent.photo) formData.append('photo', newStudent.photo);
 
       const res = await adminAPI.addStudent(formData);
-      setGeneratedPassword(res.data.generatedPassword);
-      toast.success('Student added! Note the password below.');
+      toast.success('Student added! They can login using their Register Number as the initial password.');
       setNewStudent({ name: '', registerNumber: '', department: 'CSE', year: '1',
         hostel: user?.hostel !== 'ALL' ? user.hostel : '', mobile: '', email: '', photo: null });
       loadDashboardData();
@@ -196,11 +357,7 @@ export const AdminDashboard = () => {
     setLoading(true);
     try {
       const res = await adminAPI.uploadCSV(file);
-      toast.success(`${res.data.successCount} students imported!`);
-      if (res.data.addedStudents?.length > 0) {
-        const pwList = res.data.addedStudents.map(s => `${s.registerNumber}: ${s.password}`).join('\n');
-        alert('Generated Passwords (save these!):\n\n' + pwList);
-      }
+      toast.success(`${res.data.successCount} students imported! Initial password is their Register Number.`);
       loadDashboardData();
     } catch { toast.error('CSV upload failed'); }
     finally { setLoading(false); e.target.value = ''; }
@@ -302,8 +459,8 @@ export const AdminDashboard = () => {
       return 0;
     });
 
-  const tabs = ['dashboard', 'students', 'meal-status', 'qr-codes', 'reports', 'settings'];
-  if (isMasterAdmin) tabs.splice(5, 0, 'staff');
+  const tabs = ['dashboard', 'students', 'meal-status', 'qr-codes', 'reports', 'face-scanner', 'settings'];
+  if (isMasterAdmin) tabs.splice(tabs.length - 1, 0, 'staff');
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -424,6 +581,7 @@ export const AdminDashboard = () => {
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           {tabs.map(tab => (
             <button key={tab} onClick={() => {
+              if (activeTab === 'face-scanner') stopFaceScanner();
               setActiveTab(tab);
               if (tab === 'staff') loadStaff();
               if (tab === 'meal-status') loadMealStatus();
@@ -432,7 +590,9 @@ export const AdminDashboard = () => {
                 activeTab === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
-              {tab === 'meal-status' ? '📊 Meal Status' : tab === 'qr-codes' ? '📱 QR Codes' :
+              {tab === 'meal-status' ? '📊 Meal Status' : 
+               tab === 'qr-codes' ? '📱 QR Codes' :
+               tab === 'face-scanner' ? '🧬 Face Scanner' :
                tab === 'staff' ? '👥 Staff' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
@@ -484,13 +644,10 @@ export const AdminDashboard = () => {
             {showAddForm && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-5">
                 <h3 className="font-bold text-blue-800 mb-3">📝 Add New Student</h3>
-                {generatedPassword && (
-                  <div className="bg-green-100 border border-green-300 rounded-lg p-3 mb-4">
-                    <p className="font-bold text-green-800">✅ Student Created! Auto-Generated Password:</p>
-                    <p className="text-2xl font-mono font-bold text-green-900 mt-1">{generatedPassword}</p>
-                    <p className="text-xs text-green-700 mt-1">⚠️ Save this! Student must use this password to login and will be asked to change it.</p>
-                  </div>
-                )}
+                <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-3 mb-4">
+                  <p className="font-bold text-yellow-800">ℹ️ Initial Login Information:</p>
+                  <p className="text-sm text-yellow-700 mt-1">Students can login using their **Register Number** as both ID and Initial Password. They will be forced to change it on first login.</p>
+                </div>
                 <form onSubmit={handleAddStudent}>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <div>
@@ -568,12 +725,13 @@ export const AdminDashboard = () => {
                     <th className="px-3 py-2 text-left">Dept</th>
                     <th className="px-3 py-2 text-left">Year</th>
                     <th className="px-3 py-2 text-left">Mobile</th>
+                    <th className="px-3 py-2 text-center">Face</th>
                     <th className="px-3 py-2 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredStudents.length === 0 ? (
-                    <tr><td colSpan="7" className="px-4 py-6 text-center text-gray-500">No students found.</td></tr>
+                    <tr><td colSpan="8" className="px-4 py-6 text-center text-gray-500">No students found.</td></tr>
                   ) : filteredStudents.map(s => (
                     <tr key={s._id} className="border-t hover:bg-gray-50">
                       <td className="px-3 py-2">{s.name}</td>
@@ -582,6 +740,11 @@ export const AdminDashboard = () => {
                       <td className="px-3 py-2">{s.department}</td>
                       <td className="px-3 py-2">{s.year}</td>
                       <td className="px-3 py-2">{s.mobile}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${s.faceRegistered ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {s.faceRegistered ? '✅ Registered' : '❌ Not Set'}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-center">
                         <div className="flex gap-1 justify-center">
                           <button onClick={() => handleEditClick(s)} className="bg-yellow-500 text-white px-2 py-1 rounded text-xs hover:bg-yellow-600">✏️ Edit</button>
@@ -751,6 +914,93 @@ export const AdminDashboard = () => {
               <h2 className="text-xl font-bold mb-4">Egg Distribution</h2>
               <p className="text-3xl font-bold text-yellow-600">{eggStats?.eggCount || 0}</p>
               <p className="text-gray-600">This month</p>
+            </div>
+          </div>
+        )}
+
+        {/* ========== FACE SCANNER ========== */}
+        {activeTab === 'face-scanner' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-bold mb-4">🧬 Face Recognition Scanner</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                <div className="relative rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center">
+                  {!faceScannerActive ? (
+                    <div className="text-center p-8">
+                      <div className="text-5xl mb-4">📷</div>
+                      <button onClick={startFaceScanner} disabled={faceModelsLoading}
+                        className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition disabled:opacity-50">
+                        {faceModelsLoading ? '⌛ Loading Models...' : 'Start Camera Scanner'}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
+                      <canvas ref={faceOverlayRef} className="absolute top-0 left-0 w-full h-full scale-x-[-1]" />
+                      <div className={`absolute bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-sm font-bold text-white ${faceDetected ? 'bg-green-600' : 'bg-red-600'}`}>
+                        {faceDetected ? '🟢 FACE DETECTED' : '🔴 NO FACE'}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {faceScannerActive && (
+                  <div className="flex gap-3">
+                    <button onClick={handleAdminFaceScan} disabled={!faceDetected || faceScanning}
+                      className="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition disabled:opacity-50">
+                      {faceScanning ? '⌛ Identifying...' : '🔍 Scan & Identify'}
+                    </button>
+                    <button onClick={stopFaceScanner} className="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-300">
+                      Stop
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-6 border-2 border-dashed border-gray-200">
+                <h3 className="text-lg font-bold text-gray-700 mb-4">Result & Actions</h3>
+                {identifiedStudent ? (
+                  <div className="animate-fade-in">
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-green-200 mb-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl">👨‍🎓</div>
+                        <div>
+                          <p className="text-xl font-bold text-blue-600">{identifiedStudent.name}</p>
+                          <p className="text-sm text-gray-500">{identifiedStudent.registerNumber} • {identifiedStudent.hostel}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="font-bold text-gray-700 mb-2">Mark Attendance For:</p>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      {[
+                        { type: 'BREAKFAST', label: '🍳 Breakfast' },
+                        { type: 'LUNCH', label: '🥗 Lunch' },
+                        { type: 'DINNER', label: '🍖 Dinner' },
+                      ].map(m => (
+                        <button key={m.type} onClick={() => markMealForStudent(m.type)}
+                          className="bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 text-sm">
+                          {m.label}
+                        </button>
+                      ))}
+                      <button onClick={markEggForStudent}
+                        className="bg-yellow-500 text-white py-3 rounded-lg font-bold hover:bg-yellow-600 text-sm">
+                        🥚 Mark Egg
+                      </button>
+                    </div>
+                    
+                    <button onClick={() => setIdentifiedStudent(null)} className="w-full text-blue-600 font-semibold text-sm hover:underline">
+                      Clear Result
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-400">
+                    <p className="text-4xl mb-2">🔭</p>
+                    <p>No student identified yet.</p>
+                    <p className="text-xs">Scan a student's face to mark their meal.</p>
+                  </div>
+                )}
+                {scanMessage && <p className="mt-4 text-center font-bold text-blue-600 animate-pulse">{scanMessage}</p>}
+              </div>
             </div>
           </div>
         )}
