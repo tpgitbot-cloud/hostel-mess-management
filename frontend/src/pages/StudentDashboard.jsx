@@ -394,7 +394,13 @@ export const StudentDashboard = () => {
   };
 
   if (!user) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>Loading...</div>;
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <div className="text-white text-xl font-bold">Loading your dashboard...</div>
+        <p className="text-slate-400 mt-2">Checking student records</p>
+      </div>
+    );
   }
 
   const mealCount = bill?.mealCount || { breakfast: 0, lunch: 0, dinner: 0 };
@@ -477,7 +483,7 @@ export const StudentDashboard = () => {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto p-4">
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 flex-wrap">
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
           {[
             { id: 'home', label: '🏠 Home' },
             { id: 'scan', label: '📷 Scan QR' },
@@ -491,10 +497,10 @@ export const StudentDashboard = () => {
                 if (id !== 'face-scan') stopFaceCamera();
                 setActiveTab(id);
               }}
-              className={`px-5 py-2 rounded-lg font-semibold text-sm ${
+              className={`px-5 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all ${
                 activeTab === id
-                  ? id === 'face-scan' ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
+                  ? id === 'face-scan' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-blue-600 text-white shadow-lg'
+                  : 'bg-white text-gray-700 hover:bg-gray-100 shadow-sm'
               }`}
             >
               {label}
