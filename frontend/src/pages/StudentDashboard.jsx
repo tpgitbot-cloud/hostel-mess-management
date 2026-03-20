@@ -42,36 +42,103 @@ export const StudentDashboard = () => {
 
   const [settings, setSettings] = useState(null);
 
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const res = await settingsAPI.getSettings();
-        setSettings(res.data);
-      } catch (e) {
-        console.error('Settings load error:', e);
+  // ===== HELPER FUNCTIONS (Defined before useEffect usage) =====
+
+  // 1. Core Data Fetching
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await settingsAPI.getSettings();
+      setSettings(res.data);
+    } catch (e) {
+      console.error('Settings load error:', e);
+    }
+  }, []);
+
+  const checkFaceRegistration = useCallback(async () => {
+    try {
+      const response = await faceAPI.checkFaceStatus();
+      setFaceRegistered(response.data.faceRegistered);
+    } catch (error) {
+      // Silently fail
+    } finally {
+      setCheckingFace(false);
+    }
+  }, []);
+
+  const fetchBill = useCallback(async (studentId) => {
+    if (!studentId) return;
+    try {
+      const response = await billAPI.getStudentBill(studentId);
+      setBill(response.data);
+    } catch (error) {
+      if (error.response?.status !== 404) {
+        console.error('Failed to load bill:', error);
       }
+    }
+  }, []);
+
+  // 2. Camera Controls (QR)
+  const stopCamera = useCallback(() => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setScannerActive(false);
+    setCameraError('');
+  }, []);
+
+  // 3. Face Camera Controls
+  const stopFaceCamera = useCallback(() => {
+    if (faceAnimRef.current) {
+      cancelAnimationFrame(faceAnimRef.current);
+      faceAnimRef.current = null;
+    }
+    if (faceStreamRef.current) {
+      faceStreamRef.current.getTracks().forEach((t) => t.stop());
+      faceStreamRef.current = null;
+    }
+    setFaceScanMode(false);
+    setFaceDetected(false);
+  }, []);
+
+  const startFaceDetectLoop = useCallback(() => {
+    const faceapi = faceapiRef.current;
+    if (!faceapi) return;
+
+    const detect = async () => {
+      if (!faceVideoRef.current || faceVideoRef.current.readyState < 2) {
+        faceAnimRef.current = requestAnimationFrame(detect);
+        return;
+      }
+      try {
+        const detections = await faceapi.detectAllFaces(faceVideoRef.current).withFaceLandmarks();
+        const overlay = faceOverlayRef.current;
+        if (overlay && faceVideoRef.current) {
+          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, false);
+          const resized = faceapi.resizeResults(detections, dims);
+          const ctx = overlay.getContext('2d');
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          if (resized.length === 1) {
+            setFaceDetected(true);
+            const box = resized[0].detection.box;
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+          } else {
+            setFaceDetected(false);
+          }
+        }
+      } catch (e) {}
+      faceAnimRef.current = requestAnimationFrame(detect);
     };
-    fetchSettings();
+    detect();
+  }, []);
 
-    const storedUser = getStoredUser();
-    if (!storedUser) {
-      navigate('/login');
-      return;
-    }
-    setUser(storedUser);
-    
-    // Trigger forced password change if it's the first login (check both user object and localStorage)
-    const isFirstLogin = storedUser.isFirstLogin === true || localStorage.getItem('isFirstLogin') === 'true';
-    if (isFirstLogin) {
-      setShowForcedPasswordChange(true);
-      setCurrentPassword((storedUser.registerNumber || '').toUpperCase()); // Safe default
-    }
-
-    fetchBill(storedUser._id);
-    checkFaceRegistration();
-  }, [navigate]);
-
-  const handleForcedPasswordChange = async (e) => {
+  const handleForcedPasswordChange = useCallback(async (e) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       toast.error('Passwords do not match');
@@ -97,15 +164,43 @@ export const StudentDashboard = () => {
       localStorage.setItem('user', JSON.stringify(updatedUser));
       
       setShowForcedPasswordChange(false);
-      
-      // If they haven't registered their face yet, maybe prompt them too?
-      // For now, just continue to dashboard.
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to update password');
     } finally {
       setChangingPassword(false);
     }
-  };
+  }, [newPassword, confirmPassword, currentPassword, user]);
+
+  // 4. Session Controls
+  const handleLogout = useCallback(() => {
+    stopCamera();
+    stopFaceCamera();
+    clearAuth();
+    navigate('/login');
+  }, [navigate, stopCamera, stopFaceCamera]);
+
+  // ===== EFFECT HOOKS =====
+
+  useEffect(() => {
+    fetchSettings();
+
+    const storedUser = getStoredUser();
+    if (!storedUser) {
+      navigate('/login');
+      return;
+    }
+    setUser(storedUser);
+    
+    // Trigger forced password change if it's the first login 
+    const isFirstLogin = storedUser.isFirstLogin === true || localStorage.getItem('isFirstLogin') === 'true';
+    if (isFirstLogin) {
+      setShowForcedPasswordChange(true);
+      setCurrentPassword((storedUser.registerNumber || '').toUpperCase());
+    }
+
+    fetchBill(storedUser._id);
+    checkFaceRegistration();
+  }, [navigate, fetchSettings, fetchBill, checkFaceRegistration]);
 
   // Cleanup camera on unmount
   useEffect(() => {
@@ -113,7 +208,7 @@ export const StudentDashboard = () => {
       stopCamera();
       stopFaceCamera();
     };
-  }, []);
+  }, [stopCamera, stopFaceCamera]);
 
   // Safe stream attachment for face scan
   useEffect(() => {
@@ -122,7 +217,6 @@ export const StudentDashboard = () => {
       video.srcObject = faceStreamRef.current;
       
       const onPlay = () => {
-        console.log('Face scan video playing, starting loop');
         startFaceDetectLoop();
       };
       
@@ -134,48 +228,6 @@ export const StudentDashboard = () => {
       };
     }
   }, [activeTab, faceScanMode, startFaceDetectLoop]);
-
-  const checkFaceRegistration = async () => {
-    try {
-      const response = await faceAPI.checkFaceStatus();
-      setFaceRegistered(response.data.faceRegistered);
-    } catch (error) {
-      // Silently fail
-    } finally {
-      setCheckingFace(false);
-    }
-  };
-
-  const fetchBill = async (studentId) => {
-    try {
-      const response = await billAPI.getStudentBill(studentId);
-      setBill(response.data);
-    } catch (error) {
-      if (error.response?.status !== 404) {
-        console.error('Failed to load bill:', error);
-      }
-    }
-  };
-
-  const handleLogout = () => {
-    stopCamera();
-    stopFaceCamera();
-    clearAuth();
-    navigate('/login');
-  };
-
-  const stopCamera = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setScannerActive(false);
-    setCameraError('');
-  };
 
   const startCamera = async () => {
     setCameraError('');
@@ -318,39 +370,7 @@ export const StudentDashboard = () => {
     }
   };
 
-  const startFaceDetectLoop = useCallback(() => {
-    const faceapi = faceapiRef.current;
-    if (!faceapi) return;
-
-    const detect = async () => {
-      if (!faceVideoRef.current || faceVideoRef.current.readyState < 2) {
-        faceAnimRef.current = requestAnimationFrame(detect);
-        return;
-      }
-      try {
-        const detections = await faceapi.detectAllFaces(faceVideoRef.current).withFaceLandmarks();
-        const overlay = faceOverlayRef.current;
-        if (overlay && faceVideoRef.current) {
-          // matchDimensions(..., false) because we use CSS mirror
-          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, false);
-          const resized = faceapi.resizeResults(detections, dims);
-          const ctx = overlay.getContext('2d');
-          ctx.clearRect(0, 0, overlay.width, overlay.height);
-          if (resized.length === 1) {
-            setFaceDetected(true);
-            const box = resized[0].detection.box;
-            ctx.strokeStyle = '#22c55e';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(box.x, box.y, box.width, box.height);
-          } else {
-            setFaceDetected(false);
-          }
-        }
-      } catch (e) {}
-      faceAnimRef.current = requestAnimationFrame(detect);
-    };
-    detect();
-  }, []);
+  // This section is now moved to the top
 
   const handleFaceMealScan = async (mealType) => {
     const faceapi = faceapiRef.current;
