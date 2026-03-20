@@ -40,7 +40,18 @@ export const StudentDashboard = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
 
+  const [settings, setSettings] = useState(null);
+
   useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const { settingsAPI } = await import('../utils/api');
+        const res = await settingsAPI.getSettings();
+        setSettings(res.data);
+      } catch (e) {}
+    };
+    fetchSettings();
+
     const storedUser = getStoredUser();
     if (!storedUser) {
       navigate('/login');
@@ -449,7 +460,9 @@ export const StudentDashboard = () => {
       {/* Header */}
       <header className="bg-white shadow">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-blue-600">Student Dashboard</h1>
+          <h1 className="text-2xl font-bold text-blue-600">
+            🎓 {settings?.siteName || 'Hostel Mess'}
+          </h1>
           <button
             onClick={handleLogout}
             className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"

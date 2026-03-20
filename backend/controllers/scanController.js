@@ -1,7 +1,8 @@
 import Meal from '../models/Meal.js';
 import Egg from '../models/Egg.js';
 import Student from '../models/Student.js';
-import { isWithinMealTime, isThursday, getISTDate } from '../utils/validation.js';
+import Settings from '../models/Settings.js';
+import { isWithinMealTime, isThursday, getISTDate, getMealTimeRestriction } from '../utils/validation.js';
 
 export const scanMeal = async (req, res) => {
   try {
@@ -31,15 +32,12 @@ export const scanMeal = async (req, res) => {
       return res.status(403).json({ error: 'Student account is inactive' });
     }
 
-    // Check meal time restrictions
-    if (!isWithinMealTime(mealType)) {
-      const times = {
-        BREAKFAST: '7-9 AM',
-        LUNCH: '12-2 PM',
-        DINNER: '7-9 PM',
-      };
+    // Check meal time restrictions using dynamic settings
+    const settings = await Settings.findOne();
+    if (!isWithinMealTime(mealType, settings)) {
+      const restriction = getMealTimeRestriction(mealType, settings);
       return res.status(400).json({
-        error: `${mealType} can only be scanned between ${times[mealType]}`,
+        error: `${mealType} can only be scanned between ${restriction.start}-${restriction.end} IST`,
       });
     }
 
@@ -100,9 +98,12 @@ export const scanEgg = async (req, res) => {
       return res.status(403).json({ error: 'Student account is inactive' });
     }
 
-    // Check if today is Thursday
-    if (!isThursday()) {
-      return res.status(400).json({ error: 'Eggs are only distributed on Thursday' });
+    // Check if today is the designated egg day using dynamic settings
+    const settings = await Settings.findOne();
+    if (!isThursday(settings)) {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const eggDayIndex = settings?.eggDay ?? 4;
+      return res.status(400).json({ error: `Eggs are only distributed on ${days[eggDayIndex]}` });
     }
 
     // Get today's date at midnight in IST

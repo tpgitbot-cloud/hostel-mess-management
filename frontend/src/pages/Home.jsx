@@ -25,12 +25,20 @@ export const Home = () => {
         <p className="text-xl mb-8">
           Streamline meal tracking, billing, and admin control with QR code scanning and real-time analytics
         </p>
-        <button
-          onClick={() => navigate('/login')}
-          className="bg-white text-blue-600 px-8 py-3 rounded-lg font-bold hover:bg-gray-100 text-lg"
-        >
-          Get Started
-        </button>
+        <div className="flex flex-col md:flex-row justify-center gap-4">
+          <button
+            onClick={() => navigate('/login')}
+            className="bg-white text-blue-600 px-8 py-3 rounded-lg font-bold hover:bg-gray-100 text-lg transition"
+          >
+            Login to Portal
+          </button>
+          <button
+            onClick={() => navigate('/activate')}
+            className="bg-blue-500 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-400 text-lg transition border border-blue-400"
+          >
+            Activate Account
+          </button>
+        </div>
       </section>
 
       {/* Features */}

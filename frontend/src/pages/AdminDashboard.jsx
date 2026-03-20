@@ -64,6 +64,19 @@ export const AdminDashboard = () => {
   const [identifiedStudent, setIdentifiedStudent] = useState(null);
   const [scanMessage, setScanMessage] = useState('');
 
+  // settings
+  const [settings, setSettings] = useState(null);
+  const [settingsForm, setSettingsForm] = useState({
+    mealTimes: {
+      BREAKFAST: { start: 7, end: 9 },
+      LUNCH: { start: 12, end: 14 },
+      DINNER: { start: 19, end: 21 },
+    },
+    eggDay: 4,
+    siteName: 'TPGIT Hostel Mess',
+  });
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
   const faceVideoRef = React.useRef(null);
   const faceOverlayRef = React.useRef(null);
   const faceStreamRef = React.useRef(null);
@@ -93,11 +106,13 @@ export const AdminDashboard = () => {
 
   const loadDashboardData = async () => {
     try {
+      const { settingsAPI } = await import('../utils/api');
       const results = await Promise.allSettled([
         adminAPI.getStudents({ limit: 500 }),
         adminAPI.getMealStats(),
         adminAPI.getEggStats(),
         adminAPI.getPrices(),
+        settingsAPI.getSettings(),
       ]);
       if (results[0].status === 'fulfilled') setStudents(results[0].value.data.students || []);
       if (results[1].status === 'fulfilled') setMealStats(results[1].value.data);
@@ -106,6 +121,15 @@ export const AdminDashboard = () => {
         const p = results[3].value.data;
         setPrices(p);
         setPriceForm({ breakfast: p.breakfast?.toString() || '', lunch: p.lunch?.toString() || '', dinner: p.dinner?.toString() || '' });
+      }
+      if (results[4].status === 'fulfilled') {
+        const s = results[4].value.data;
+        setSettings(s);
+        setSettingsForm({
+          mealTimes: s.mealTimes,
+          eggDay: s.eggDay,
+          siteName: s.siteName,
+        });
       }
     } catch (e) { console.error(e); }
   };
@@ -157,6 +181,21 @@ export const AdminDashboard = () => {
       setFaceModelsLoading(false);
       toast.error('Failed to load face detection models');
       return false;
+    }
+  };
+
+  const handleUpdateSettings = async (e) => {
+    e.preventDefault();
+    setSettingsLoading(true);
+    try {
+      const { settingsAPI } = await import('../utils/api');
+      await settingsAPI.updateSettings(settingsForm);
+      toast.success('System settings updated successfully!');
+      loadDashboardData();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update settings');
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -317,7 +356,7 @@ export const AdminDashboard = () => {
       if (newStudent.photo) formData.append('photo', newStudent.photo);
 
       const res = await adminAPI.addStudent(formData);
-      toast.success('Student added! They can login using their Register Number as the initial password.');
+      toast.success('Student record created! They must now "Activate" their account using the link on the home page.');
       setNewStudent({ name: '', registerNumber: '', department: 'CSE', year: '1',
         hostel: user?.hostel !== 'ALL' ? user.hostel : '', mobile: '', email: '', photo: null });
       loadDashboardData();
@@ -582,7 +621,7 @@ export const AdminDashboard = () => {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div>
-            <h1 className="text-xl font-bold text-blue-600">🏫 TPGIT Hostel Mess</h1>
+            <h1 className="text-xl font-bold text-blue-600">🏫 {settings?.siteName || 'Hostel Mess'} Admin</h1>
             <p className="text-xs text-gray-500">
               {user.name} • {isMasterAdmin ? '👑 Master Admin' : `📋 Staff (${user.hostel})`}
             </p>
@@ -1084,39 +1123,106 @@ export const AdminDashboard = () => {
 
         {/* ========== SETTINGS ========== */}
         {activeTab === 'settings' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold mb-4">⚙️ Meal Pricing</h2>
-            {!prices || prices._default ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                <p className="text-yellow-800 font-semibold text-sm">⚠️ No prices set. Configure below!</p>
-              </div>
-            ) : null}
-            <form onSubmit={handleSetPrices}>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-gray-600 font-semibold mb-1">🍳 Breakfast (₹)</label>
-                  <input type="number" min="0" step="0.5" value={priceForm.breakfast}
-                    onChange={e => setPriceForm({ ...priceForm, breakfast: e.target.value })}
-                    className="w-full px-4 py-3 border rounded-lg text-xl font-bold text-blue-600" required />
+          <div className="space-y-6">
+            {/* Meal Pricing */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">💰 Meal Pricing</h2>
+              {!prices || prices._default ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="text-yellow-800 font-semibold text-sm">⚠️ No prices set. Configure below!</p>
                 </div>
-                <div>
-                  <label className="block text-gray-600 font-semibold mb-1">🥗 Lunch (₹)</label>
-                  <input type="number" min="0" step="0.5" value={priceForm.lunch}
-                    onChange={e => setPriceForm({ ...priceForm, lunch: e.target.value })}
-                    className="w-full px-4 py-3 border rounded-lg text-xl font-bold text-green-600" required />
+              ) : null}
+              <form onSubmit={handleSetPrices}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-gray-600 font-semibold mb-1">🍳 Breakfast (₹)</label>
+                    <input type="number" min="0" step="0.5" value={priceForm.breakfast}
+                      onChange={e => setPriceForm({ ...priceForm, breakfast: e.target.value })}
+                      className="w-full px-4 py-2 border rounded-lg font-bold text-blue-600" required />
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 font-semibold mb-1">🥗 Lunch (₹)</label>
+                    <input type="number" min="0" step="0.5" value={priceForm.lunch}
+                      onChange={e => setPriceForm({ ...priceForm, lunch: e.target.value })}
+                      className="w-full px-4 py-2 border rounded-lg font-bold text-green-600" required />
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 font-semibold mb-1">🍖 Dinner (₹)</label>
+                    <input type="number" min="0" step="0.5" value={priceForm.dinner}
+                      onChange={e => setPriceForm({ ...priceForm, dinner: e.target.value })}
+                      className="w-full px-4 py-2 border rounded-lg font-bold text-red-600" required />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-gray-600 font-semibold mb-1">🍖 Dinner (₹)</label>
-                  <input type="number" min="0" step="0.5" value={priceForm.dinner}
-                    onChange={e => setPriceForm({ ...priceForm, dinner: e.target.value })}
-                    className="w-full px-4 py-3 border rounded-lg text-xl font-bold text-red-600" required />
+                <button type="submit" disabled={priceLoading}
+                  className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50">
+                  {priceLoading ? '⏳...' : '💾 Save Prices'}
+                </button>
+              </form>
+            </div>
+
+            {/* System Configuration */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">⚙️ Mess Times & Branding</h2>
+              <form onSubmit={handleUpdateSettings}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-gray-700 border-b pb-1">⏲️ Meal Windows (24hr format)</h3>
+                    {['BREAKFAST', 'LUNCH', 'DINNER'].map(type => (
+                      <div key={type} className="flex items-center gap-3">
+                        <span className="w-24 text-sm font-semibold">{type}:</span>
+                        <input type="number" min="0" max="23" value={settingsForm.mealTimes[type].start}
+                          onChange={e => setSettingsForm({
+                            ...settingsForm,
+                            mealTimes: {
+                              ...settingsForm.mealTimes,
+                              [type]: { ...settingsForm.mealTimes[type], start: parseInt(e.target.value) }
+                            }
+                          })}
+                          className="w-20 px-2 py-1 border rounded" />
+                        <span>to</span>
+                        <input type="number" min="0" max="23" value={settingsForm.mealTimes[type].end}
+                          onChange={e => setSettingsForm({
+                            ...settingsForm,
+                            mealTimes: {
+                              ...settingsForm.mealTimes,
+                              [type]: { ...settingsForm.mealTimes[type], end: parseInt(e.target.value) }
+                            }
+                          })}
+                          className="w-20 px-2 py-1 border rounded" />
+                        <span className="text-xs text-gray-500">IST</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-gray-700 border-b pb-1">🏢 Branding & General</h3>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Site Title</label>
+                      <input type="text" value={settingsForm.siteName}
+                        onChange={e => setSettingsForm({ ...settingsForm, siteName: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-lg" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">🥚 Egg Distribution Day</label>
+                      <select value={settingsForm.eggDay}
+                        onChange={e => setSettingsForm({ ...settingsForm, eggDay: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 border rounded-lg bg-white">
+                        {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => (
+                          <option key={d} value={i}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <button type="submit" disabled={priceLoading}
-                className="mt-4 bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50">
-                {priceLoading ? '⏳...' : '💾 Save Prices'}
-              </button>
-            </form>
+
+                <div className="mt-8 pt-4 border-t">
+                  <button type="submit" disabled={settingsLoading}
+                    className="bg-emerald-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-emerald-700 transition shadow-lg disabled:opacity-50">
+                    {settingsLoading ? 'Applying Changes...' : '✅ Update System Configuration'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </main>

@@ -58,6 +58,10 @@ const studentSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    isActivated: {
+      type: Boolean,
+      default: false,
+    },
     faceDescriptor: {
       type: [Number],
       default: [],

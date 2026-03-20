@@ -36,8 +36,19 @@ export const Login = () => {
   const faceapiRef = useRef(null);
   const animFrameRef = useRef(null);
 
+  const [settings, setSettings] = useState(null);
+
   // Cleanup on unmount
   useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const { settingsAPI } = await import('../utils/api');
+        const res = await settingsAPI.getSettings();
+        setSettings(res.data);
+      } catch (e) {}
+    };
+    fetchSettings();
+
     return () => {
       stopCamera();
     };
@@ -262,7 +273,7 @@ export const Login = () => {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-lg shadow-2xl p-8">
           <h1 className="text-3xl font-bold text-center text-gray-800 mb-8">
-            🏫 TPGIT Hostel Mess
+            🏫 {settings?.siteName || 'Hostel Mess'}
           </h1>
 
           {/* Login Mode Tabs */}

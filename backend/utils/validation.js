@@ -23,29 +23,31 @@ export const getISTDate = (date = new Date()) => {
   return new Date(utcTime + istOffset);
 };
 
-export const getMealTimeRestriction = (mealType) => {
-  const restrictions = {
-    BREAKFAST: { start: 7, end: 9 }, // 7 AM to 9 AM IST
-    LUNCH: { start: 12, end: 14 }, // 12 PM to 2 PM IST
-    DINNER: { start: 19, end: 21 }, // 7 PM to 9 PM IST
+export const getMealTimeRestriction = (mealType, settings) => {
+  if (settings && settings.mealTimes && settings.mealTimes[mealType]) {
+    return settings.mealTimes[mealType];
+  }
+  const defaultRestrictions = {
+    BREAKFAST: { start: 7, end: 9 },
+    LUNCH: { start: 12, end: 14 },
+    DINNER: { start: 19, end: 21 },
   };
-  return restrictions[mealType];
+  return defaultRestrictions[mealType];
 };
 
-export const isWithinMealTime = (mealType, date = new Date()) => {
-  const restriction = getMealTimeRestriction(mealType);
+export const isWithinMealTime = (mealType, settings, date = new Date()) => {
+  const restriction = getMealTimeRestriction(mealType, settings);
   if (!restriction) return false;
 
-  // Use IST time, not server's UTC time
   const istDate = getISTDate(date);
   const hour = istDate.getHours();
   return hour >= restriction.start && hour < restriction.end;
 };
 
-export const isThursday = (date = new Date()) => {
-  // Use IST time for Thursday check
+export const isThursday = (settings, date = new Date()) => {
   const istDate = getISTDate(date);
-  return istDate.getDay() === 4; // Thursday is 4 (0 is Sunday)
+  const eggDay = (settings && settings.eggDay !== undefined) ? settings.eggDay : 4;
+  return istDate.getDay() === eggDay;
 };
 
 export default {

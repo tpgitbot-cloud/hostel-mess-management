@@ -25,6 +25,12 @@ export const studentLogin = async (req, res) => {
       return res.status(403).json({ error: 'Account is inactive' });
     }
 
+    if (!student.isActivated) {
+      return res.status(403).json({ 
+        error: 'Your account is not activated. Please click "Activate Account" on the home page to set up your profile.' 
+      });
+    }
+
     const token = generateToken(student._id, 'student');
     res.status(200).json({
       message: 'Login successful',
@@ -127,52 +133,45 @@ export const changePassword = async (req, res) => {
   }
 };
 
-export const studentSignup = async (req, res) => {
+export const activateAccount = async (req, res) => {
   try {
-    const { name, registerNumber, password, department, year, hostel, mobile, email } = req.body;
+    const { registerNumber, mobile } = req.body;
 
-    if (!name || !registerNumber || !password || !department || !year || !hostel || !mobile) {
-      return res.status(400).json({ error: 'All required fields must be provided' });
+    if (!registerNumber || !mobile) {
+      return res.status(400).json({ error: 'Register number and mobile number are required' });
     }
 
-    if (!validatePassword(password)) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    const existingStudent = await Student.findOne({ registerNumber: registerNumber.toUpperCase() });
-    if (existingStudent) {
-      if (!existingStudent.isActive) {
-        // If an inactive record exists, replace it
-        await Student.findByIdAndDelete(existingStudent._id);
-      } else {
-        return res.status(409).json({ error: 'Student with this register number already exists' });
-      }
-    }
-
-    const student = new Student({
-      name,
+    const student = await Student.findOne({ 
       registerNumber: registerNumber.toUpperCase(),
-      password,
-      department,
-      year: parseInt(year),
-      hostel,
-      mobile,
-      email: email?.toLowerCase(),
-      isFirstLogin: false, // Student set their own password during signup
+      mobile: mobile.trim()
     });
 
+    if (!student) {
+      return res.status(404).json({ error: 'Student record not found. Please contact your mess admin.' });
+    }
+
+    if (student.isActivated) {
+      return res.status(400).json({ error: 'Account is already activated. Please login directly.' });
+    }
+
+    if (!student.isActive) {
+      return res.status(403).json({ error: 'This student record is disabled. Contact admin.' });
+    }
+
+    // Activate the account
+    student.isActivated = true;
     await student.save();
 
     const token = generateToken(student._id, 'student');
-    res.status(201).json({
-      message: 'Signup successful!',
+    res.status(200).json({
+      message: 'Account activated successfully! Please secure your account by setting a new password.',
       token,
       student: student.toJSON(),
-      isFirstLogin: false,
+      isFirstLogin: student.isFirstLogin,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-export default { studentLogin, adminLogin, changePassword, studentSignup };
+export default { studentLogin, adminLogin, changePassword, activateAccount };

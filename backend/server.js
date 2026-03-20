@@ -13,6 +13,7 @@ import scanRoutes from './routes/scan.js';
 import billRoutes from './routes/bill.js';
 import adminRoutes from './routes/admin.js';
 import faceRoutes from './routes/face.js';
+import settingsRoutes from './routes/settings.js';
 
 const app = express();
 
@@ -71,6 +72,7 @@ app.use('/api/scan', scanRoutes);
 app.use('/api/bill', billRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/face', faceRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

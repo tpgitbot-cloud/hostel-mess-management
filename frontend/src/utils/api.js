@@ -34,12 +34,17 @@ api.interceptors.response.use(
 export const authAPI = {
   studentLogin: (registerNumber, password) =>
     api.post('/auth/student-login', { registerNumber, password }),
-  studentSignup: (formData) =>
-    api.post('/auth/student-signup', formData),
+  activateAccount: (registerNumber, mobile) =>
+    api.post('/auth/activate-account', { registerNumber, mobile }),
   adminLogin: (email, password) =>
     api.post('/auth/admin-login', { email, password }),
   changePassword: (currentPassword, newPassword) =>
     api.post('/auth/change-password', { currentPassword, newPassword }),
+};
+
+export const settingsAPI = {
+  getSettings: () => api.get('/settings'),
+  updateSettings: (data) => api.put('/settings', data),
 };
 
 export const scanAPI = {
