@@ -29,6 +29,13 @@ export const AdminDashboard = () => {
     hostel: '', mobile: '', email: '', photo: null,
   });
 
+  // Edit Student
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [editForm, setEditForm] = useState({
+    name: '', department: 'CSE', year: '1', hostel: '', mobile: '', email: '', photo: null,
+  });
+  const [editLoading, setEditLoading] = useState(false);
+
   // Prices
   const [priceForm, setPriceForm] = useState({ breakfast: '', lunch: '', dinner: '' });
   const [priceLoading, setPriceLoading] = useState(false);
@@ -142,9 +149,46 @@ export const AdminDashboard = () => {
   };
 
   const handleDeleteStudent = async (id) => {
-    if (!window.confirm('Delete this student?')) return;
-    try { await adminAPI.deleteStudent(id); toast.success('Deleted'); loadDashboardData(); }
+    if (!window.confirm('Are you sure you want to permanently delete this student? This action cannot be undone.')) return;
+    try { await adminAPI.deleteStudent(id); toast.success('Student permanently deleted'); loadDashboardData(); }
     catch { toast.error('Failed to delete'); }
+  };
+
+  // ===== Edit Student =====
+  const handleEditClick = (student) => {
+    setEditingStudent(student);
+    setEditForm({
+      name: student.name || '',
+      department: student.department || 'CSE',
+      year: String(student.year) || '1',
+      hostel: student.hostel || '',
+      mobile: student.mobile || '',
+      email: student.email || '',
+      photo: null,
+    });
+  };
+
+  const handleEditStudent = async (e) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+    setEditLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', editForm.name.trim());
+      formData.append('department', editForm.department);
+      formData.append('year', editForm.year);
+      formData.append('hostel', editForm.hostel);
+      formData.append('mobile', editForm.mobile.trim());
+      if (editForm.email) formData.append('email', editForm.email.trim().toLowerCase());
+      if (editForm.photo) formData.append('photo', editForm.photo);
+
+      await adminAPI.updateStudent(editingStudent._id, formData);
+      toast.success('Student updated successfully!');
+      setEditingStudent(null);
+      loadDashboardData();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update student');
+    } finally { setEditLoading(false); }
   };
 
   const handleUploadCSV = async (e) => {
@@ -186,8 +230,8 @@ export const AdminDashboard = () => {
   };
 
   const handleDeleteStaff = async (id) => {
-    if (!window.confirm('Remove this staff?')) return;
-    try { await adminAPI.deleteStaff(id); toast.success('Staff removed'); loadStaff(); }
+    if (!window.confirm('Are you sure you want to permanently remove this staff member? This action cannot be undone.')) return;
+    try { await adminAPI.deleteStaff(id); toast.success('Staff permanently removed'); loadStaff(); }
     catch { toast.error('Failed to remove staff'); }
   };
 
@@ -284,6 +328,77 @@ export const AdminDashboard = () => {
               <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700">
                 Update Password
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Student Modal */}
+      {editingStudent && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="bg-white rounded-xl p-8 shadow-xl" style={{ maxWidth: 550, width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-blue-600">✏️ Edit Student</h2>
+              <button onClick={() => setEditingStudent(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">Reg No: <span className="font-mono font-bold">{editingStudent.registerNumber}</span></p>
+            <form onSubmit={handleEditStudent}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Full Name *</label>
+                  <input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Hostel *</label>
+                  <select value={editForm.hostel} onChange={e => setEditForm({ ...editForm, hostel: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg bg-white" required
+                    disabled={user?.hostel && user.hostel !== 'ALL'}>
+                    <option value="">Select Hostel</option>
+                    {HOSTELS.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Department *</label>
+                  <select value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg bg-white" required>
+                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Year *</label>
+                  <select value={editForm.year} onChange={e => setEditForm({ ...editForm, year: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg bg-white" required>
+                    {YEARS.map(y => <option key={y} value={y}>{y} Year</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Mobile *</label>
+                  <input type="tel" value={editForm.mobile} maxLength={10}
+                    onChange={e => setEditForm({ ...editForm, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    className="w-full px-3 py-2 border rounded-lg" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Email</label>
+                  <input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold mb-1">Photo (optional, upload new to replace)</label>
+                  <input type="file" accept="image/*" onChange={e => setEditForm({ ...editForm, photo: e.target.files[0] || null })}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+              </div>
+              <div className="mt-5 flex gap-3">
+                <button type="submit" disabled={editLoading}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50">
+                  {editLoading ? '⏳ Saving...' : '💾 Save Changes'}
+                </button>
+                <button type="button" onClick={() => setEditingStudent(null)}
+                  className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-400">
+                  Cancel
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -468,7 +583,10 @@ export const AdminDashboard = () => {
                       <td className="px-3 py-2">{s.year}</td>
                       <td className="px-3 py-2">{s.mobile}</td>
                       <td className="px-3 py-2 text-center">
-                        <button onClick={() => handleDeleteStudent(s._id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">Delete</button>
+                        <div className="flex gap-1 justify-center">
+                          <button onClick={() => handleEditClick(s)} className="bg-yellow-500 text-white px-2 py-1 rounded text-xs hover:bg-yellow-600">✏️ Edit</button>
+                          <button onClick={() => handleDeleteStudent(s._id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">🗑️ Delete</button>
+                        </div>
                       </td>
                     </tr>
                   ))}

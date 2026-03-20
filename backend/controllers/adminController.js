@@ -36,7 +36,12 @@ export const addStudent = async (req, res) => {
 
     const existingStudent = await Student.findOne({ registerNumber: registerNumber.toUpperCase() });
     if (existingStudent) {
-      return res.status(409).json({ error: 'Student with this register number already exists' });
+      if (!existingStudent.isActive) {
+        // Permanently remove the old inactive record so it can be re-added
+        await Student.findByIdAndDelete(existingStudent._id);
+      } else {
+        return res.status(409).json({ error: 'Student with this register number already exists' });
+      }
     }
 
     // Auto-generate password
@@ -115,8 +120,12 @@ export const uploadStudentsCSV = async (req, res) => {
 
             const existing = await Student.findOne({ registerNumber: registerNumber.toUpperCase() });
             if (existing) {
-              errors.push({ row, error: 'Duplicate register number' });
-              continue;
+              if (!existing.isActive) {
+                await Student.findByIdAndDelete(existing._id);
+              } else {
+                errors.push({ row, error: 'Duplicate register number' });
+                continue;
+              }
             }
 
             const autoPassword = generatePassword(8);
@@ -238,13 +247,11 @@ export const updateStudent = async (req, res) => {
 export const deleteStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const student = await Student.findById(id);
+    const student = await Student.findByIdAndDelete(id);
     if (!student) {
       return res.status(404).json({ error: 'Student not found' });
     }
-    student.isActive = false;
-    await student.save();
-    res.status(200).json({ message: 'Student deleted successfully' });
+    res.status(200).json({ message: 'Student deleted permanently' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -266,7 +273,12 @@ export const addStaff = async (req, res) => {
 
     const existing = await Admin.findOne({ email: email.toLowerCase() });
     if (existing) {
-      return res.status(409).json({ error: 'Staff with this email already exists' });
+      if (!existing.isActive) {
+        // Permanently remove the old inactive record so it can be re-added
+        await Admin.findByIdAndDelete(existing._id);
+      } else {
+        return res.status(409).json({ error: 'Staff with this email already exists' });
+      }
     }
 
     const autoPassword = generatePassword(8);
@@ -308,9 +320,8 @@ export const deleteStaff = async (req, res) => {
     if (!staff || staff.role === 'master_admin') {
       return res.status(404).json({ error: 'Staff not found' });
     }
-    staff.isActive = false;
-    await staff.save();
-    res.status(200).json({ message: 'Staff removed successfully' });
+    await Admin.findByIdAndDelete(id);
+    res.status(200).json({ message: 'Staff removed permanently' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
