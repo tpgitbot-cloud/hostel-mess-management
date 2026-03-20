@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { authAPI, faceAPI } from '../utils/api';
+import { authAPI, faceAPI, settingsAPI } from '../utils/api';
 import { saveUser } from '../utils/auth';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -42,10 +42,11 @@ export const Login = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const { settingsAPI } = await import('../utils/api');
         const res = await settingsAPI.getSettings();
         setSettings(res.data);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Settings load error:', e);
+      }
     };
     fetchSettings();
 

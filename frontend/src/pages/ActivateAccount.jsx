@@ -32,9 +32,14 @@ export const ActivateAccount = () => {
 
     try {
       const response = await authAPI.activateAccount(formData.registerNumber, formData.mobile);
-      saveUser(response.data.student, response.data.token);
+      // Update student object with isFirstLogin info
+      const student = {
+        ...response.data.student,
+        isFirstLogin: response.data.isFirstLogin
+      };
+      saveUser(student, response.data.token);
       
-      // Store that it's the first login to trigger password change
+      // Also store as a separate flag for backward compatibility
       localStorage.setItem('isFirstLogin', 'true');
 
       toast.success('Account activated! Welcome to the mess portal.');

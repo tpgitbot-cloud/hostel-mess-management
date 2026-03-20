@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { scanAPI, billAPI, faceAPI, authAPI } from '../utils/api';
+import { scanAPI, billAPI, faceAPI, authAPI, settingsAPI } from '../utils/api';
 import { getStoredUser, clearAuth } from '../utils/auth';
 import { toast, ToastContainer } from 'react-toastify';
 
@@ -45,10 +45,11 @@ export const StudentDashboard = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const { settingsAPI } = await import('../utils/api');
         const res = await settingsAPI.getSettings();
         setSettings(res.data);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Settings load error:', e);
+      }
     };
     fetchSettings();
 
@@ -59,10 +60,11 @@ export const StudentDashboard = () => {
     }
     setUser(storedUser);
     
-    // Trigger forced password change if it's the first login
-    if (storedUser.isFirstLogin) {
+    // Trigger forced password change if it's the first login (check both user object and localStorage)
+    const isFirstLogin = storedUser.isFirstLogin === true || localStorage.getItem('isFirstLogin') === 'true';
+    if (isFirstLogin) {
       setShowForcedPasswordChange(true);
-      setCurrentPassword(storedUser.registerNumber); // They just logged in with this
+      setCurrentPassword((storedUser.registerNumber || '').toUpperCase()); // Safe default
     }
 
     fetchBill(storedUser._id);
@@ -451,7 +453,7 @@ export const StudentDashboard = () => {
             </form>
 
             <p className="text-[10px] text-center text-gray-400 mt-6 uppercase tracking-widest font-bold">
-              Default Password Hint: {user?.registerNumber}
+              Default Password Hint: {user?.registerNumber || 'Reg No'}
             </p>
           </div>
         </div>
