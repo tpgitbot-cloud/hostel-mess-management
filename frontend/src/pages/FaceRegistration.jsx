@@ -21,6 +21,7 @@ export const FaceRegistration = () => {
   const [faceDetected, setFaceDetected] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Refs
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const overlayCanvasRef = useRef(null);
@@ -28,100 +29,9 @@ export const FaceRegistration = () => {
   const faceapiRef = useRef(null);
   const animFrameRef = useRef(null);
 
-  useEffect(() => {
-    const storedUser = getStoredUser();
-    if (!storedUser) {
-      navigate('/login');
-      return;
-    }
-    setUser(storedUser);
-    loadFaceModels();
+  // ===== HOISTED HELPER FUNCTIONS (Memoized) =====
 
-    return () => {
-      stopCamera();
-    };
-  }, [navigate]);
-
-  const loadFaceModels = async () => {
-    try {
-      setLoadingProgress('Loading face detection models...');
-
-      // Dynamic import of face-api.js
-      const faceapi = await import(
-        /* webpackIgnore: true */
-        'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
-      );
-      faceapiRef.current = faceapi;
-
-      setLoadingProgress('Loading SSD MobileNet model...');
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-
-      setLoadingProgress('Loading Face Landmark model...');
-      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-
-      setLoadingProgress('Loading Face Recognition model...');
-      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-
-      setModelsLoaded(true);
-      setStep('ready');
-      setLoadingProgress('');
-    } catch (error) {
-      console.error('Failed to load face models:', error);
-      setLoadingProgress('');
-      setCameraError('Failed to load face detection models. Please check your internet connection and reload.');
-    }
-  };
-
-  const startCamera = async () => {
-    setCameraError('');
-    setCameraActive(true);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-      });
-
-      streamRef.current = stream;
-      setStep('capturing');
-      // Stream will be attached to video in useEffect below
-    } catch (err) {
-      setCameraActive(false);
-      console.error('Camera access error:', err);
-      if (err.name === 'NotAllowedError') {
-        setCameraError('Camera permission denied. Please allow camera access.');
-      } else if (err.name === 'NotFoundError') {
-        setCameraError('No camera found on this device.');
-      } else {
-        setCameraError('Could not access camera: ' + err.message);
-      }
-    }
-  };
-
-  // Safe stream attachment
-  useEffect(() => {
-    if (step === 'capturing' && streamRef.current && videoRef.current) {
-      const video = videoRef.current;
-      video.srcObject = streamRef.current;
-      
-      const onPlay = () => {
-        console.log('Video started playing, starting detection loop');
-        startFaceDetectionLoop();
-      };
-      
-      video.addEventListener('playing', onPlay);
-      video.play().catch(e => console.error("Play error:", e));
-      
-      return () => {
-        video.removeEventListener('playing', onPlay);
-      };
-    }
-  }, [step, startFaceDetectionLoop]);
-
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
@@ -132,7 +42,7 @@ export const FaceRegistration = () => {
     }
     setCameraActive(false);
     setFaceDetected(false);
-  };
+  }, []);
 
   const startFaceDetectionLoop = useCallback(() => {
     const faceapi = faceapiRef.current;
@@ -152,49 +62,74 @@ export const FaceRegistration = () => {
 
         const overlay = overlayCanvasRef.current;
         if (overlay && videoRef.current) {
-          // matchDimensions(..., false) because we use CSS transform: scaleX(-1) to mirror everything
           const dims = faceapi.matchDimensions(overlay, videoRef.current, false);
           const resized = faceapi.resizeResults(detections, dims);
-
           const ctx = overlay.getContext('2d');
           ctx.clearRect(0, 0, overlay.width, overlay.height);
 
           if (resized.length === 1) {
             setFaceDetected(true);
-            // Draw face box with green color
             const box = resized[0].detection.box;
-            ctx.strokeStyle = '#22c55e';
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#10b981'; // emerald-500
+            ctx.lineWidth = 4;
             ctx.strokeRect(box.x, box.y, box.width, box.height);
-
-            // Draw landmark points
+            
+            // Draw landmarks points
             const landmarks = resized[0].landmarks;
-            const points = landmarks.positions;
-            ctx.fillStyle = '#22c55e';
-            for (const pt of points) {
+            ctx.fillStyle = '#10b981';
+            landmarks.positions.forEach(pt => {
               ctx.beginPath();
               ctx.arc(pt.x, pt.y, 2, 0, 2 * Math.PI);
               ctx.fill();
-            }
+            });
           } else {
             setFaceDetected(false);
-            if (resized.length > 1) {
-              // Multiple faces
-              ctx.fillStyle = '#ef4444';
-              ctx.font = '16px sans-serif';
-              ctx.fillText('Multiple faces detected - only 1 face allowed', 10, 30);
-            }
           }
         }
-      } catch (e) {
-        // Silently ignore detection errors
-      }
-
+      } catch (e) {}
       animFrameRef.current = requestAnimationFrame(detect);
     };
-
     detect();
   }, []);
+
+  const loadFaceModels = useCallback(async () => {
+    try {
+      setLoadingProgress('Initializing AI Engine...');
+      const faceapi = await import(
+        /* @vite-ignore */
+        'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
+      );
+      faceapiRef.current = faceapi;
+      setLoadingProgress('Neural Network: SSD MobileNet...');
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      setLoadingProgress('Neural Network: Face Landmarks...');
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      setLoadingProgress('Neural Network: Recognition...');
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      setModelsLoaded(true);
+      setStep('ready');
+      setLoadingProgress('');
+    } catch (error) {
+      console.error('Model load error:', error);
+      setLoadingProgress('');
+      setCameraError('AI Initialization failed. Please check your connection.');
+    }
+  }, []);
+
+  const startCamera = async () => {
+    setCameraError('');
+    setCameraActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      streamRef.current = stream;
+      setStep('capturing');
+    } catch (err) {
+      setCameraActive(false);
+      setCameraError('Camera access denied or not found.');
+    }
+  };
 
   const captureFrame = async () => {
     const faceapi = faceapiRef.current;
@@ -209,24 +144,20 @@ export const FaceRegistration = () => {
     setCaptureCountdown(null);
 
     try {
-      // Get face descriptor
       const detection = await faceapi
         .detectSingleFace(videoRef.current)
         .withFaceLandmarks()
         .withFaceDescriptor();
 
       if (!detection) {
-        toast.error('No face detected. Please face the camera directly.');
+        toast.error('No face detected. Stay still.');
         return;
       }
 
-      // Capture a thumbnail
       const thumbCanvas = document.createElement('canvas');
-      thumbCanvas.width = 120;
-      thumbCanvas.height = 90;
-      const thumbCtx = thumbCanvas.getContext('2d');
-      thumbCtx.drawImage(videoRef.current, 0, 0, 120, 90);
-      const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.7);
+      thumbCanvas.width = 120; thumbCanvas.height = 90;
+      thumbCanvas.getContext('2d').drawImage(videoRef.current, 0, 0, 120, 90);
+      const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.8);
 
       const newCapture = {
         descriptor: Array.from(detection.descriptor),
@@ -236,54 +167,36 @@ export const FaceRegistration = () => {
 
       setCaptures((prev) => {
         const updated = [...prev, newCapture];
-        if (updated.length >= REQUIRED_CAPTURES) {
-          setStep('processing');
-        }
+        if (updated.length >= REQUIRED_CAPTURES) setStep('processing');
         return updated;
       });
-
-      toast.success(`📸 Capture ${captures.length + 1}/${REQUIRED_CAPTURES} saved!`);
+      toast.success(`📸 Sample ${captures.length + 1} captured!`);
     } catch (error) {
-      toast.error('Face capture failed. Please try again.');
-      console.error('Capture error:', error);
+      toast.error('Capture failed.');
     }
   };
 
   const handleSubmit = async () => {
-    if (captures.length < REQUIRED_CAPTURES) {
-      toast.error(`Please capture at least ${REQUIRED_CAPTURES} face samples.`);
-      return;
-    }
-
+    if (captures.length < REQUIRED_CAPTURES) return;
     setSubmitting(true);
-
     try {
-      // Average all descriptors for better accuracy
       const avgDescriptor = new Array(128).fill(0);
-      for (const capture of captures) {
-        for (let i = 0; i < 128; i++) {
-          avgDescriptor[i] += capture.descriptor[i];
-        }
-      }
-      for (let i = 0; i < 128; i++) {
-        avgDescriptor[i] /= captures.length;
-      }
+      captures.forEach(c => c.descriptor.forEach((v, i) => avgDescriptor[i] += v));
+      avgDescriptor.forEach((_, i) => avgDescriptor[i] /= captures.length);
 
       await faceAPI.registerFace(avgDescriptor);
-      toast.success('🎉 Face registered successfully!');
+      toast.success('🎉 Identity Registered!');
       setStep('done');
       stopCamera();
-
-      // Update the stored user info
+      
       const storedUser = getStoredUser();
       if (storedUser) {
         storedUser.faceRegistered = true;
         localStorage.setItem('user', JSON.stringify(storedUser));
       }
-
-      setTimeout(() => navigate('/dashboard'), 2000);
+      setTimeout(() => navigate('/dashboard'), 2500);
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Face registration failed');
+      toast.error('Registration failed.');
     } finally {
       setSubmitting(false);
     }
@@ -294,207 +207,269 @@ export const FaceRegistration = () => {
     setStep('capturing');
   };
 
+  // ===== EFFECTS (Bottom) =====
+
+  useEffect(() => {
+    const storedUser = getStoredUser();
+    if (!storedUser) { navigate('/login'); return; }
+    setUser(storedUser);
+    loadFaceModels();
+    return () => stopCamera();
+  }, [navigate, loadFaceModels, stopCamera]);
+
+  useEffect(() => {
+    if (step === 'capturing' && streamRef.current && videoRef.current) {
+      const video = videoRef.current;
+      video.srcObject = streamRef.current;
+      const onPlay = () => startFaceDetectionLoop();
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Video play error:", e));
+      return () => video.removeEventListener('playing', onPlay);
+    }
+  }, [step, startFaceDetectionLoop]);
+
   if (!user) {
     return (
-      <div className="face-page-wrapper">
-        <div className="face-loading-screen">Loading...</div>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+         <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="face-page-wrapper">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       <ToastContainer position="top-right" autoClose={3000} />
-
-      <div className="face-reg-container">
+      
+      <div className="max-w-4xl mx-auto w-full p-4 md:p-8 flex-grow">
         {/* Header */}
-        <div className="face-reg-header">
-          <button onClick={() => navigate('/dashboard')} className="face-back-btn">
-            ← Back
-          </button>
-          <h1 className="face-reg-title">🧬 Face Registration</h1>
-          <p className="face-reg-subtitle">
-            Register your face for quick scan-based login & meal tracking
-          </p>
+        <div className="flex flex-col md:flex-row items-center justify-between mb-10 gap-4">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => navigate('/dashboard')} 
+              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white shadow-sm border border-gray-100 hover:bg-gray-50 transition-all text-xl"
+            >
+              ←
+            </button>
+            <div>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight">Biometric Enrollment</h1>
+              <p className="text-slate-500 font-medium">Register your unique face profile for secure access</p>
+            </div>
+          </div>
+          <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl font-bold text-sm border border-emerald-100">
+             Enrollment #{user.registerNumber}
+          </div>
         </div>
 
-        {/* Progress Steps */}
-        <div className="face-steps">
-          {['Load Models', 'Open Camera', 'Capture Faces', 'Register'].map((label, i) => {
-            const stepIdx =
-              step === 'loading' ? 0 :
-              step === 'ready' ? 1 :
-              step === 'capturing' ? 2 :
-              step === 'processing' ? 3 :
-              step === 'done' ? 4 : 0;
-
+        {/* Setup Progress */}
+        <div className="flex justify-between items-center mb-12 max-w-2xl mx-auto px-4">
+          {['Models', 'Device', 'Capture', 'Active'].map((label, i) => {
+            const stepIdx = step === 'loading' ? 0 : step === 'ready' ? 1 : step === 'capturing' ? 2 : step === 'processing' ? 3 : 4;
+            const icon = i < stepIdx ? '✓' : i + 1;
             return (
-              <div
-                key={label}
-                className={`face-step ${i < stepIdx ? 'completed' : ''} ${i === stepIdx ? 'active' : ''}`}
-              >
-                <div className="face-step-circle">
-                  {i < stepIdx ? '✓' : i + 1}
-                </div>
-                <span className="face-step-label">{label}</span>
+              <div key={label} className="flex flex-col items-center gap-2 group">
+                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500 ${
+                   i < stepIdx ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 
+                   i === stepIdx ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 scale-110' : 'bg-gray-200 text-gray-400'
+                 }`}>
+                   {icon}
+                 </div>
+                 <span className={`text-[10px] font-black uppercase tracking-widest ${i <= stepIdx ? 'text-slate-900' : 'text-slate-300'}`}>
+                   {label}
+                 </span>
               </div>
             );
           })}
         </div>
 
-        {/* Loading Models */}
-        {step === 'loading' && (
-          <div className="face-card face-card-center">
-            <div className="face-spinner"></div>
-            <p className="face-loading-text">{loadingProgress}</p>
-            <p className="face-hint">This may take a moment on first load...</p>
+        {/* Content Area */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* Main Interaction Area */}
+          <div className="lg:col-span-8 space-y-6">
+            
+            {/* Loading AI State */}
+            {step === 'loading' && (
+              <div className="bg-white rounded-[40px] p-20 text-center shadow-xl shadow-slate-200/50 border border-slate-100 animate-in fade-in duration-700">
+                <div className="relative w-24 h-24 mx-auto mb-8">
+                  <div className="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="absolute inset-4 bg-blue-50 rounded-full flex items-center justify-center text-2xl">🧠</div>
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 mb-2">Powering up AI</h2>
+                <p className="text-slate-500 font-medium mb-1">{loadingProgress}</p>
+                <div className="w-48 h-1.5 bg-slate-100 mx-auto rounded-full mt-4 overflow-hidden">
+                   <div className="h-full bg-blue-600 animate-pulse w-full"></div>
+                </div>
+              </div>
+            )}
+
+            {/* Error State */}
+            {cameraError && (
+              <div className="bg-red-50 rounded-[40px] p-12 text-center border border-red-100 shadow-xl shadow-red-500/5">
+                <div className="text-6xl mb-6">⚠️</div>
+                <h2 className="text-xl font-black text-red-900 mb-4">{cameraError}</h2>
+                <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-8 py-3.5 rounded-2xl font-black hover:bg-red-700 transition-all uppercase tracking-widest text-sm shadow-lg shadow-red-600/20">
+                  Reload Portal
+                </button>
+              </div>
+            )}
+
+            {/* Ready State */}
+            {step === 'ready' && !cameraError && (
+              <div className="bg-white rounded-[40px] p-10 md:p-16 shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden relative group">
+                <div className="relative z-10 text-center">
+                  <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-[28px] flex items-center justify-center text-4xl mx-auto mb-8 shadow-inner border border-blue-100">
+                    📷
+                  </div>
+                  <h2 className="text-3xl font-black text-slate-900 mb-4">Initialize Camera</h2>
+                  <p className="text-slate-500 text-lg mb-10 max-w-md mx-auto leading-relaxed">
+                    We'll need to capture {REQUIRED_CAPTURES} distinct samples of your face to build a secure biometric profile.
+                  </p>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 max-w-sm mx-auto">
+                     {['Bright Light', 'Face Up', 'No Mask', 'No Glasses'].map(t => (
+                       <div key={t} className="bg-slate-50 p-3 rounded-2xl text-[10px] font-black uppercase tracking-tight text-slate-400 border border-slate-100">{t}</div>
+                     ))}
+                  </div>
+
+                  <button onClick={startCamera} className="group relative bg-blue-600 text-white px-10 py-5 rounded-[24px] font-black text-lg hover:bg-blue-700 active:scale-95 transition-all shadow-2xl shadow-blue-600/30 overflow-hidden">
+                    <span className="relative z-10">Start Enrollment Process</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-transparent opacity-0 group-hover:opacity-20 transition-opacity"></div>
+                  </button>
+                </div>
+                <div className="absolute bottom-[-10%] right-[-5%] w-64 h-64 bg-blue-50 rounded-full blur-3xl opacity-50"></div>
+              </div>
+            )}
+
+            {/* Capturing State */}
+            {(step === 'capturing' || step === 'processing') && !cameraError && (
+              <div className="space-y-6 animate-in slide-in-from-bottom-8 duration-500">
+                <div className="bg-white rounded-[40px] p-4 md:p-8 shadow-2xl shadow-slate-200/50 border border-slate-100">
+                  
+                  {/* Camera Canvas Container */}
+                  <div className="relative aspect-[4/3] bg-slate-900 rounded-[32px] overflow-hidden shadow-2xl border-4 border-white ring-8 ring-slate-100 group">
+                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror-mode opacity-90" />
+                    <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full mirror-mode" />
+                    
+                    {/* UI Overlays */}
+                    <div className="absolute top-6 left-6 flex items-center gap-3">
+                       <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border ${
+                         faceDetected ? 'bg-emerald-500/80 text-white border-emerald-400' : 'bg-red-500/80 text-white border-red-400'
+                       }`}>
+                         {faceDetected ? '✓ Face Tracked' : '⚠️ No Signal'}
+                       </div>
+                    </div>
+
+                    {captureCountdown && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-blue-600/40 backdrop-blur-sm animate-pulse">
+                        <span className="text-9xl font-black text-white drop-shadow-2xl">{captureCountdown}</span>
+                      </div>
+                    )}
+
+                    <div className="absolute bottom-6 inset-x-6 flex flex-col items-center">
+                       <div className="w-full bg-slate-900/40 backdrop-blur-md rounded-2xl p-4 border border-white/20">
+                          <div className="flex justify-between items-center mb-2">
+                             <span className="text-[10px] font-black text-white uppercase tracking-tighter">Biometric Progress</span>
+                             <span className="text-[10px] font-black text-emerald-400 uppercase tracking-tighter">{Math.round((captures.length / REQUIRED_CAPTURES) * 100)}% Complete</span>
+                          </div>
+                          <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                             <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: `${(captures.length / REQUIRED_CAPTURES) * 100}%` }}></div>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="mt-8 flex flex-col items-center gap-4">
+                     {step === 'capturing' ? (
+                       <button 
+                         onClick={captureFrame} 
+                         disabled={!faceDetected || captureCountdown !== null}
+                         className="group bg-slate-900 text-white px-12 py-5 rounded-[24px] font-black text-lg hover:bg-black active:scale-[0.98] transition-all shadow-2xl shadow-slate-900/20 disabled:opacity-40"
+                       >
+                         {captureCountdown ? `Capturing...` : `Capture Sample #${captures.length + 1}`}
+                       </button>
+                     ) : (
+                       <div className="flex flex-col items-center gap-4 w-full">
+                         <div className="bg-emerald-50 text-emerald-700 px-6 py-3 rounded-2xl text-center font-bold text-sm tracking-tight border border-emerald-100 flex items-center gap-2">
+                           ✨ Quality check passed! You're ready to register.
+                         </div>
+                         <div className="flex gap-4 w-full">
+                           <button onClick={handleSubmit} disabled={submitting} className="flex-grow bg-emerald-600 text-white py-5 rounded-[24px] font-black text-lg shadow-xl shadow-emerald-500/20 active:scale-[0.98] transition-all hover:bg-emerald-700">
+                             {submitting ? '🔒 Saving Profile...' : 'Finalize Registration'}
+                           </button>
+                           <button onClick={resetCaptures} disabled={submitting} className="bg-slate-100 text-slate-900 px-8 py-5 rounded-[24px] font-black hover:bg-slate-200 transition-all active:scale-[0.98]">
+                             🔄
+                           </button>
+                         </div>
+                       </div>
+                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Final Success State */}
+            {step === 'done' && (
+              <div className="bg-white rounded-[40px] p-20 text-center shadow-2xl shadow-emerald-500/10 border border-emerald-100 animate-in zoom-in duration-500">
+                <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-5xl mx-auto mb-8 shadow-inner bounce-in">
+                  🎉
+                </div>
+                <h2 className="text-3xl font-black text-slate-900 mb-2">Success!</h2>
+                <p className="text-slate-500 font-medium mb-10">Your face ID is active. Returning to your dashboard...</p>
+                <div className="w-12 h-2 bg-emerald-500 mx-auto rounded-full animate-pulse"></div>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Camera Error */}
-        {cameraError && (
-          <div className="face-error-card">
-            <p className="face-error-icon">❌</p>
-            <p className="face-error-text">{cameraError}</p>
-            <button onClick={() => { setCameraError(''); startCamera(); }} className="face-btn face-btn-primary">
-              Try Again
-            </button>
-          </div>
-        )}
-
-        {/* Ready to Start */}
-        {step === 'ready' && !cameraError && (
-          <div className="face-card face-card-center">
-            <div className="face-ready-icon">📷</div>
-            <h2 className="face-card-title">Camera Ready</h2>
-            <p className="face-card-desc">
-              We'll capture {REQUIRED_CAPTURES} face samples to create your face profile.
-              Make sure you're in a well-lit area and facing the camera directly.
-            </p>
-            <div className="face-tips">
-              <div className="face-tip">💡 Good lighting</div>
-              <div className="face-tip">😐 Face the camera</div>
-              <div className="face-tip">🚫 No sunglasses</div>
-              <div className="face-tip">👤 One person only</div>
-            </div>
-            <button onClick={startCamera} className="face-btn face-btn-primary face-btn-lg">
-              🎥 Start Camera
-            </button>
-          </div>
-        )}
-
-        {/* Capturing */}
-        {(step === 'capturing' || step === 'processing') && !cameraError && (
-          <div className="face-capture-area">
-            {/* Camera View */}
-            <div className="face-camera-wrapper">
-              <div className="face-camera-container">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="face-camera-video"
-                />
-                <canvas ref={overlayCanvasRef} className="face-camera-overlay" />
-
-                {/* Countdown */}
-                {captureCountdown && (
-                  <div className="face-countdown">
-                    <span>{captureCountdown}</span>
+          {/* Sidebar - Captured Gallery */}
+          <div className="lg:col-span-4 space-y-6">
+             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 min-h-[300px]">
+                <div className="flex items-center justify-between mb-6">
+                   <h3 className="font-bold text-slate-900 uppercase text-xs tracking-widest">Enrollment Gallery</h3>
+                   <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-full">{captures.length}/{REQUIRED_CAPTURES}</span>
+                </div>
+                
+                {captures.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 opacity-20 filter grayscale">
+                     <span className="text-5xl mb-4">🖼️</span>
+                     <p className="text-[10px] font-black uppercase tracking-widest">Empty Workspace</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    {captures.map((cap, i) => (
+                      <div key={i} className="group relative aspect-square bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 hover:ring-2 hover:ring-blue-500 transition-all">
+                        <img src={cap.thumbnail} alt="capture" className="w-full h-full object-cover mirror-mode" />
+                        <div className="absolute inset-0 bg-blue-600/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                           <span className="text-white font-black drop-shadow-lg text-lg">#{i + 1}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
-
-                {/* Face Status Indicator */}
-                <div className={`face-status-indicator ${faceDetected ? 'detected' : 'not-detected'}`}>
-                  {faceDetected ? '✅ Face Detected' : '⚠️ No Face Detected'}
-                </div>
-              </div>
-
-              {/* Capture Progress */}
-              <div className="face-capture-progress">
-                <div className="face-progress-bar">
-                  <div
-                    className="face-progress-fill"
-                    style={{ width: `${(captures.length / REQUIRED_CAPTURES) * 100}%` }}
-                  ></div>
-                </div>
-                <p className="face-progress-text">
-                  {captures.length} / {REQUIRED_CAPTURES} captures
+             </div>
+             
+             {/* Info Tip */}
+             <div className="bg-slate-900 rounded-[32px] p-8 text-white shadow-xl shadow-slate-900/10">
+                <div className="text-2xl mb-4">🛡️</div>
+                <h4 className="font-bold text-sm mb-2">Privacy Encryption</h4>
+                <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                  We collect face descriptors (mathematical representations), not actual photos. Your biometric data is encrypted and used only for mess security.
                 </p>
-              </div>
-
-              {/* Capture Button */}
-              {step === 'capturing' && (
-                <div className="face-capture-actions">
-                  <button
-                    onClick={captureFrame}
-                    disabled={!faceDetected || captureCountdown !== null}
-                    className="face-btn face-btn-capture"
-                  >
-                    {captureCountdown
-                      ? `📸 Capturing in ${captureCountdown}...`
-                      : `📸 Capture Face (${captures.length + 1}/${REQUIRED_CAPTURES})`
-                    }
-                  </button>
-                  <button onClick={() => { stopCamera(); setStep('ready'); setCaptures([]); }} className="face-btn face-btn-cancel">
-                    ✕ Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Thumbnails */}
-            {captures.length > 0 && (
-              <div className="face-thumbnails">
-                <h3 className="face-thumbnails-title">Captured Samples</h3>
-                <div className="face-thumbnails-grid">
-                  {captures.map((cap, i) => (
-                    <div key={i} className="face-thumbnail">
-                      <img src={cap.thumbnail} alt={`Capture ${i + 1}`} />
-                      <span className="face-thumbnail-label">#{i + 1}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Submit */}
-            {step === 'processing' && (
-              <div className="face-submit-area">
-                <div className="face-success-msg">
-                  <p>✅ All {REQUIRED_CAPTURES} captures collected!</p>
-                  <p className="face-hint">Review the captures above and submit to register your face.</p>
-                </div>
-                <div className="face-submit-actions">
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting}
-                    className="face-btn face-btn-primary face-btn-lg"
-                  >
-                    {submitting ? '⏳ Registering...' : '🧬 Register Face'}
-                  </button>
-                  <button onClick={resetCaptures} disabled={submitting} className="face-btn face-btn-secondary">
-                    🔄 Retake All
-                  </button>
-                </div>
-              </div>
-            )}
+             </div>
           </div>
-        )}
-
-        {/* Done */}
-        {step === 'done' && (
-          <div className="face-card face-card-center face-done-card">
-            <div className="face-done-icon">🎉</div>
-            <h2 className="face-card-title">Face Registered!</h2>
-            <p className="face-card-desc">
-              Your face has been registered successfully. You can now use face-based login and meal scanning.
-            </p>
-            <p className="face-hint">Redirecting to dashboard...</p>
-          </div>
-        )}
+        </div>
       </div>
+      
+      <style>{`
+        .mirror-mode { transform: scaleX(-1); }
+        .bounce-in { animation: bounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes bounce {
+          0% { transform: scale(0.3); opacity: 0; }
+          60% { transform: scale(1.1); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };
