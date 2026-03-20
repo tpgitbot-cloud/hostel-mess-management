@@ -180,16 +180,32 @@ export const AdminDashboard = () => {
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       faceStreamRef.current = stream;
-      if (faceVideoRef.current) {
-        faceVideoRef.current.srcObject = stream;
-        await faceVideoRef.current.play();
-      }
       setFaceScannerActive(true);
-      startFaceDetectionLoop();
+      // Stream will be attached in useEffect below
     } catch (err) {
       toast.error('Camera error: ' + err.message);
     }
   };
+
+  // Safe stream attachment for admin scanner
+  useEffect(() => {
+    if (activeTab === 'face-scanner' && faceScannerActive && faceStreamRef.current && faceVideoRef.current) {
+      const video = faceVideoRef.current;
+      video.srcObject = faceStreamRef.current;
+      
+      const onPlay = () => {
+        console.log('Admin scanner playing, starting loop');
+        startFaceDetectionLoop();
+      };
+      
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Admin scan play error:", e));
+      
+      return () => {
+        video.removeEventListener('playing', onPlay);
+      };
+    }
+  }, [activeTab, faceScannerActive, startFaceDetectionLoop]);
 
   const startFaceDetectionLoop = () => {
     const faceapi = faceapiRef.current;
@@ -204,7 +220,8 @@ export const AdminDashboard = () => {
         const detections = await faceapi.detectAllFaces(faceVideoRef.current).withFaceLandmarks();
         const overlay = faceOverlayRef.current;
         if (overlay && faceVideoRef.current) {
-          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, true);
+          // matchDimensions(..., false) because we use CSS mirror
+          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, false);
           const resized = faceapi.resizeResults(detections, dims);
           const ctx = overlay.getContext('2d');
           ctx.clearRect(0, 0, overlay.width, overlay.height);

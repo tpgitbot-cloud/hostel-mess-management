@@ -102,6 +102,26 @@ export const StudentDashboard = () => {
     };
   }, []);
 
+  // Safe stream attachment for face scan
+  useEffect(() => {
+    if (activeTab === 'face-scan' && faceScanMode && faceStreamRef.current && faceVideoRef.current) {
+      const video = faceVideoRef.current;
+      video.srcObject = faceStreamRef.current;
+      
+      const onPlay = () => {
+        console.log('Face scan video playing, starting loop');
+        startFaceDetectLoop();
+      };
+      
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Face scan play error:", e));
+      
+      return () => {
+        video.removeEventListener('playing', onPlay);
+      };
+    }
+  }, [activeTab, faceScanMode, startFaceDetectLoop]);
+
   const checkFaceRegistration = async () => {
     try {
       const response = await faceAPI.checkFaceStatus();
@@ -278,12 +298,8 @@ export const StudentDashboard = () => {
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       faceStreamRef.current = stream;
-      if (faceVideoRef.current) {
-        faceVideoRef.current.srcObject = stream;
-        await faceVideoRef.current.play();
-      }
       setFaceScanMode(true);
-      startFaceDetectLoop();
+      // Stream will be attached in useEffect
     } catch (err) {
       toast.error('Camera error: ' + err.message);
     }
@@ -302,7 +318,8 @@ export const StudentDashboard = () => {
         const detections = await faceapi.detectAllFaces(faceVideoRef.current).withFaceLandmarks();
         const overlay = faceOverlayRef.current;
         if (overlay && faceVideoRef.current) {
-          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, true);
+          // matchDimensions(..., false) because we use CSS mirror
+          const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, false);
           const resized = faceapi.resizeResults(detections, dims);
           const ctx = overlay.getContext('2d');
           ctx.clearRect(0, 0, overlay.width, overlay.height);

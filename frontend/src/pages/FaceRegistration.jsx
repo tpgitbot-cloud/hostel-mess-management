@@ -86,16 +86,11 @@ export const FaceRegistration = () => {
       });
 
       streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
       setStep('capturing');
-      startFaceDetectionLoop();
+      // Stream will be attached to video in useEffect below
     } catch (err) {
       setCameraActive(false);
+      console.error('Camera access error:', err);
       if (err.name === 'NotAllowedError') {
         setCameraError('Camera permission denied. Please allow camera access.');
       } else if (err.name === 'NotFoundError') {
@@ -105,6 +100,26 @@ export const FaceRegistration = () => {
       }
     }
   };
+
+  // Safe stream attachment
+  useEffect(() => {
+    if (step === 'capturing' && streamRef.current && videoRef.current) {
+      const video = videoRef.current;
+      video.srcObject = streamRef.current;
+      
+      const onPlay = () => {
+        console.log('Video started playing, starting detection loop');
+        startFaceDetectionLoop();
+      };
+      
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Play error:", e));
+      
+      return () => {
+        video.removeEventListener('playing', onPlay);
+      };
+    }
+  }, [step, startFaceDetectionLoop]);
 
   const stopCamera = () => {
     if (animFrameRef.current) {
@@ -130,13 +145,15 @@ export const FaceRegistration = () => {
       }
 
       try {
+        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 });
         const detections = await faceapi
-          .detectAllFaces(videoRef.current)
+          .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks();
 
         const overlay = overlayCanvasRef.current;
         if (overlay && videoRef.current) {
-          const dims = faceapi.matchDimensions(overlay, videoRef.current, true);
+          // matchDimensions(..., false) because we use CSS transform: scaleX(-1) to mirror everything
+          const dims = faceapi.matchDimensions(overlay, videoRef.current, false);
           const resized = faceapi.resizeResults(detections, dims);
 
           const ctx = overlay.getContext('2d');

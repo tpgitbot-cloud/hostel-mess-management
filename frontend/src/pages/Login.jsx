@@ -43,6 +43,26 @@ export const Login = () => {
     };
   }, []);
 
+  // Safe stream attachment for face login
+  useEffect(() => {
+    if (loginMode === 'face' && cameraActive && streamRef.current && videoRef.current) {
+      const video = videoRef.current;
+      video.srcObject = streamRef.current;
+      
+      const onPlay = () => {
+        console.log('Login video playing, starting loop');
+        startDetectionLoop();
+      };
+      
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Login play error:", e));
+      
+      return () => {
+        video.removeEventListener('playing', onPlay);
+      };
+    }
+  }, [loginMode, cameraActive, startDetectionLoop]);
+
   const handleStudentChange = (e) => {
     setStudentForm({ ...studentForm, [e.target.name]: e.target.value });
   };
@@ -139,13 +159,8 @@ export const Login = () => {
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
       setCameraActive(true);
-      startDetectionLoop();
+      // Stream will be attached in useEffect
     } catch (err) {
       if (err.name === 'NotAllowedError') {
         setCameraError('Camera permission denied. Please allow camera access.');
@@ -174,7 +189,8 @@ export const Login = () => {
 
         const overlay = overlayCanvasRef.current;
         if (overlay && videoRef.current) {
-          const dims = faceapi.matchDimensions(overlay, videoRef.current, true);
+          // matchDimensions(..., false) because we use CSS mirror
+          const dims = faceapi.matchDimensions(overlay, videoRef.current, false);
           const resized = faceapi.resizeResults(detections, dims);
 
           const ctx = overlay.getContext('2d');
