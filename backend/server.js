@@ -61,6 +61,15 @@ mongoose.connect(process.env.MONGO_URI, {
     process.exit(1);
   });
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    message: 'Welcome to the Hostel Mess Management API',
+    status: 'ONLINE',
+    healthCheck: '/api/health'
+  });
+});
+
 // Basic health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Server is running' });
