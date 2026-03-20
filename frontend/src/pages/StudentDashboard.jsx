@@ -179,55 +179,9 @@ export const StudentDashboard = () => {
     navigate('/login');
   }, [navigate, stopCamera, stopFaceCamera]);
 
-  // ===== EFFECT HOOKS =====
+  // Effects will be defined at the bottom
 
-  useEffect(() => {
-    fetchSettings();
-
-    const storedUser = getStoredUser();
-    if (!storedUser) {
-      navigate('/login');
-      return;
-    }
-    setUser(storedUser);
-    
-    // Trigger forced password change if it's the first login 
-    const isFirstLogin = storedUser.isFirstLogin === true || localStorage.getItem('isFirstLogin') === 'true';
-    if (isFirstLogin) {
-      setShowForcedPasswordChange(true);
-      setCurrentPassword((storedUser.registerNumber || '').toUpperCase());
-    }
-
-    fetchBill(storedUser._id);
-    checkFaceRegistration();
-  }, [navigate, fetchSettings, fetchBill, checkFaceRegistration]);
-
-  // Cleanup camera on unmount
-  useEffect(() => {
-    return () => {
-      stopCamera();
-      stopFaceCamera();
-    };
-  }, [stopCamera, stopFaceCamera]);
-
-  // Safe stream attachment for face scan
-  useEffect(() => {
-    if (activeTab === 'face-scan' && faceScanMode && faceStreamRef.current && faceVideoRef.current) {
-      const video = faceVideoRef.current;
-      video.srcObject = faceStreamRef.current;
-      
-      const onPlay = () => {
-        startFaceDetectLoop();
-      };
-      
-      video.addEventListener('playing', onPlay);
-      video.play().catch(e => console.error("Face scan play error:", e));
-      
-      return () => {
-        video.removeEventListener('playing', onPlay);
-      };
-    }
-  }, [activeTab, faceScanMode, startFaceDetectLoop]);
+  // Effects and Rendering logic
 
   const startCamera = async () => {
     setCameraError('');
@@ -413,12 +367,60 @@ export const StudentDashboard = () => {
     }
   };
 
+  // ===== EFFECT HOOKS (at the bottom to avoid TDZ errors) =====
+
+  useEffect(() => {
+    fetchSettings();
+
+    const storedUser = getStoredUser();
+    if (!storedUser) {
+      navigate('/login');
+      return;
+    }
+    setUser(storedUser);
+    
+    // Forced password change logic
+    const isFirstLogin = storedUser.isFirstLogin === true || localStorage.getItem('isFirstLogin') === 'true';
+    if (isFirstLogin) {
+      setShowForcedPasswordChange(true);
+      setCurrentPassword((storedUser.registerNumber || '').toUpperCase());
+    }
+
+    fetchBill(storedUser._id);
+    checkFaceRegistration();
+  }, [navigate, fetchSettings, fetchBill, checkFaceRegistration]);
+
+  useEffect(() => {
+    if (activeTab === 'face-scan' && faceScanMode && faceStreamRef.current && faceVideoRef.current) {
+      const video = faceVideoRef.current;
+      video.srcObject = faceStreamRef.current;
+      const onPlay = () => startFaceDetectLoop();
+      video.addEventListener('playing', onPlay);
+      video.play().catch(e => console.error("Face scan error:", e));
+      return () => video.removeEventListener('playing', onPlay);
+    }
+  }, [activeTab, faceScanMode, startFaceDetectLoop]);
+
+  useEffect(() => {
+    if (activeTab === 'scan' && scannerActive && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(e => console.error("QR scan error:", e));
+    }
+  }, [activeTab, scannerActive]);
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+      stopFaceCamera();
+    };
+  }, [stopCamera, stopFaceCamera]);
+
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
         <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="text-white text-xl font-bold">Loading your dashboard...</div>
-        <p className="text-slate-400 mt-2">Checking student records</p>
+        <div className="text-white text-xl font-bold">Initializing Portal...</div>
+        <p className="text-slate-400 mt-2">Checking session & student records</p>
       </div>
     );
   }
