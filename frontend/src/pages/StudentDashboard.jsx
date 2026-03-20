@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { scanAPI, billAPI, faceAPI, authAPI, settingsAPI } from '../utils/api';
 import { getStoredUser, clearAuth } from '../utils/auth';
 import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
 
@@ -16,10 +17,17 @@ export const StudentDashboard = () => {
   const [cameraError, setCameraError] = useState('');
   const [faceRegistered, setFaceRegistered] = useState(false);
   const [checkingFace, setCheckingFace] = useState(true);
+  
+  // Refs
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
+  const faceVideoRef = useRef(null);
+  const faceOverlayRef = useRef(null);
+  const faceStreamRef = useRef(null);
+  const faceapiRef = useRef(null);
+  const faceAnimRef = useRef(null);
 
   // Face scan state
   const [faceScanMode, setFaceScanMode] = useState(false);
@@ -27,11 +35,6 @@ export const StudentDashboard = () => {
   const [faceModelsLoading, setFaceModelsLoading] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [faceScanning, setFaceScanning] = useState(false);
-  const faceVideoRef = useRef(null);
-  const faceOverlayRef = useRef(null);
-  const faceStreamRef = useRef(null);
-  const faceapiRef = useRef(null);
-  const faceAnimRef = useRef(null);
 
   // Forced Password Change State
   const [showForcedPasswordChange, setShowForcedPasswordChange] = useState(false);
@@ -42,9 +45,8 @@ export const StudentDashboard = () => {
 
   const [settings, setSettings] = useState(null);
 
-  // ===== HELPER FUNCTIONS (Defined before useEffect usage) =====
+  // ===== HELPER FUNCTIONS (Hoisted & Memoized) =====
 
-  // 1. Core Data Fetching
   const fetchSettings = useCallback(async () => {
     try {
       const res = await settingsAPI.getSettings();
@@ -77,7 +79,6 @@ export const StudentDashboard = () => {
     }
   }, []);
 
-  // 2. Camera Controls (QR)
   const stopCamera = useCallback(() => {
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
@@ -91,7 +92,6 @@ export const StudentDashboard = () => {
     setCameraError('');
   }, []);
 
-  // 3. Face Camera Controls
   const stopFaceCamera = useCallback(() => {
     if (faceAnimRef.current) {
       cancelAnimationFrame(faceAnimRef.current);
@@ -158,10 +158,10 @@ export const StudentDashboard = () => {
       await authAPI.changePassword(currentPassword, newPassword);
       toast.success('Password updated! You can now access your dashboard.');
       
-      // Update stored user
       const updatedUser = { ...user, isFirstLogin: false };
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      localStorage.removeItem('isFirstLogin');
       
       setShowForcedPasswordChange(false);
     } catch (error) {
@@ -171,7 +171,6 @@ export const StudentDashboard = () => {
     }
   }, [newPassword, confirmPassword, currentPassword, user]);
 
-  // 4. Session Controls
   const handleLogout = useCallback(() => {
     stopCamera();
     stopFaceCamera();
@@ -179,73 +178,15 @@ export const StudentDashboard = () => {
     navigate('/login');
   }, [navigate, stopCamera, stopFaceCamera]);
 
-  // Effects will be defined at the bottom
-
-  // Effects and Rendering logic
-
-  const startCamera = async () => {
-    setCameraError('');
-    setScannerActive(true);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-
-      // Dynamic import of jsQR for QR reading from camera frames
-      const { default: jsQR } = await import('jsqr');
-
-      // Start scanning frames
-      scanIntervalRef.current = setInterval(() => {
-        if (!videoRef.current || !canvasRef.current) return;
-
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-
-        if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
-
-        if (code) {
-          handleQRScan(code.data);
-          stopCamera();
-        }
-      }, 300);
-    } catch (err) {
-      console.error('Camera error:', err);
-      setScannerActive(false);
-      if (err.name === 'NotAllowedError') {
-        setCameraError('Camera permission denied. Please allow camera access in your browser settings.');
-      } else if (err.name === 'NotFoundError') {
-        setCameraError('No camera found on this device.');
-      } else {
-        setCameraError('Could not access camera: ' + err.message);
-      }
-    }
-  };
+  // ===== CAMERA & SCAN LOGIC =====
 
   const handleQRScan = async (qrData) => {
     try {
       const mealType = (qrData || '').toUpperCase().trim();
-
       if (!['BREAKFAST', 'LUNCH', 'DINNER'].includes(mealType)) {
         toast.error('Invalid QR code. Only BREAKFAST, LUNCH, or DINNER QR codes are valid.');
         return;
       }
-
       setLoading(true);
       await scanAPI.scanMeal(mealType, user._id);
       toast.success(`✅ ${mealType} scanned successfully!`);
@@ -257,32 +198,41 @@ export const StudentDashboard = () => {
     }
   };
 
-  const handleEggScan = async () => {
+  const startCamera = async () => {
+    setCameraError('');
+    setScannerActive(true);
     try {
-      setLoading(true);
-      await scanAPI.scanEgg(user._id);
-      toast.success('🥚 Egg collected successfully!');
-      fetchBill(user._id);
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Egg scan failed');
-    } finally {
-      setLoading(false);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      // Dynamic import of jsQR
+      const { default: jsQR } = await import('jsqr');
+      scanIntervalRef.current = setInterval(() => {
+        if (!videoRef.current || !canvasRef.current) return;
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if (code) {
+          handleQRScan(code.data);
+          stopCamera();
+        }
+      }, 300);
+    } catch (err) {
+      console.error('Camera error:', err);
+      setScannerActive(false);
+      setCameraError('Could not access camera: ' + err.message);
     }
-  };
-
-  // ===== FACE SCAN FOR MEALS =====
-
-  const stopFaceCamera = () => {
-    if (faceAnimRef.current) {
-      cancelAnimationFrame(faceAnimRef.current);
-      faceAnimRef.current = null;
-    }
-    if (faceStreamRef.current) {
-      faceStreamRef.current.getTracks().forEach((t) => t.stop());
-      faceStreamRef.current = null;
-    }
-    setFaceScanMode(false);
-    setFaceDetected(false);
   };
 
   const loadFaceModels = async () => {
@@ -290,7 +240,7 @@ export const StudentDashboard = () => {
     setFaceModelsLoading(true);
     try {
       const faceapi = await import(
-        /* webpackIgnore: true */
+        /* @vite-ignore */
         'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
       );
       faceapiRef.current = faceapi;
@@ -311,51 +261,39 @@ export const StudentDashboard = () => {
     stopCamera();
     const loaded = await loadFaceModels();
     if (!loaded) return;
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       faceStreamRef.current = stream;
       setFaceScanMode(true);
-      // Stream will be attached in useEffect
     } catch (err) {
       toast.error('Camera error: ' + err.message);
     }
   };
 
-  // This section is now moved to the top
-
   const handleFaceMealScan = async (mealType) => {
     const faceapi = faceapiRef.current;
     if (!faceapi || !faceVideoRef.current) return;
-
     setFaceScanning(true);
     try {
       const detection = await faceapi
         .detectSingleFace(faceVideoRef.current)
         .withFaceLandmarks()
         .withFaceDescriptor();
-
       if (!detection) {
         toast.error('No face detected. Please face the camera.');
         setFaceScanning(false);
         return;
       }
-
-      // Use the face scan to verify identity, then mark the meal
       const descriptor = Array.from(detection.descriptor);
       const identifyRes = await faceAPI.faceScanMeal(descriptor, mealType);
       const identifiedStudent = identifyRes.data.student;
-
-      // Verify it's the same student
       if (identifiedStudent._id !== user._id) {
         toast.error('Face does not match your profile!');
         setFaceScanning(false);
         return;
       }
-
-      // Mark the meal
       await scanAPI.scanMeal(mealType, user._id);
       toast.success(`✅ ${mealType} scanned via face recognition!`);
       fetchBill(user._id);
@@ -367,25 +305,34 @@ export const StudentDashboard = () => {
     }
   };
 
-  // ===== EFFECT HOOKS (at the bottom to avoid TDZ errors) =====
+  const handleEggScan = async () => {
+    try {
+      setLoading(true);
+      await scanAPI.scanEgg(user._id);
+      toast.success('🥚 Egg collected successfully!');
+      fetchBill(user._id);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Egg scan failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ===== EFFECT HOOKS (Bottom of component) =====
 
   useEffect(() => {
     fetchSettings();
-
     const storedUser = getStoredUser();
     if (!storedUser) {
       navigate('/login');
       return;
     }
     setUser(storedUser);
-    
-    // Forced password change logic
     const isFirstLogin = storedUser.isFirstLogin === true || localStorage.getItem('isFirstLogin') === 'true';
     if (isFirstLogin) {
       setShowForcedPasswordChange(true);
       setCurrentPassword((storedUser.registerNumber || '').toUpperCase());
     }
-
     fetchBill(storedUser._id);
     checkFaceRegistration();
   }, [navigate, fetchSettings, fetchBill, checkFaceRegistration]);
@@ -417,10 +364,10 @@ export const StudentDashboard = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
-        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="text-white text-xl font-bold">Initializing Portal...</div>
-        <p className="text-slate-400 mt-2">Checking session & student records</p>
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-6 shadow-lg shadow-blue-500/20"></div>
+        <div className="text-white text-2xl font-bold tracking-tight">Initializing Portal</div>
+        <p className="text-slate-400 mt-2 max-w-xs">Connecting to secure mess services and verifying session records...</p>
       </div>
     );
   }
@@ -429,42 +376,44 @@ export const StudentDashboard = () => {
   const totalMeals = mealCount.breakfast + mealCount.lunch + mealCount.dinner;
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <ToastContainer position="top-right" autoClose={3000} />
 
       {/* Forced Password Change Modal */}
       {showForcedPasswordChange && (
-        <div className="fixed inset-0 z-[100] bg-gray-900/90 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md animate-fade-in shadow-blue-500/20">
-            <div className="text-center mb-6">
-              <div className="text-5xl mb-4">🔐</div>
-              <h2 className="text-2xl font-bold text-gray-800">Secure Your Account</h2>
-              <p className="text-gray-500 mt-2 text-sm">
-                This is your first login. For security reasons, you must change your default password.
+        <div className="fixed inset-0 z-[100] bg-gray-900/95 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md animate-in fade-in zoom-in duration-300 shadow-blue-500/10">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-sm">
+                <span className="text-4xl text-blue-600">🔐</span>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">Secure Your Account</h2>
+              <p className="text-gray-500 mt-2 text-sm leading-relaxed">
+                Welcome! As this is your first time logging in, you must set a new secure password.
               </p>
             </div>
 
-            <form onSubmit={handleForcedPasswordChange} className="space-y-4">
+            <form onSubmit={handleForcedPasswordChange} className="space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">New Password</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">New Password</label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
                   placeholder="Min 6 characters"
                   required
                   autoFocus
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Confirm New Password</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Confirm Password</label>
                 <input
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Retype password"
+                  className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
+                  placeholder="Repeat new password"
                   required
                 />
               </div>
@@ -473,45 +422,53 @@ export const StudentDashboard = () => {
                 <button
                   type="submit"
                   disabled={changingPassword}
-                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition disabled:opacity-50"
+                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 active:scale-[0.98] transition-all shadow-xl shadow-blue-600/20 disabled:opacity-50"
                 >
-                  {changingPassword ? 'Updating Password...' : 'Save & Continue'}
+                  {changingPassword ? '🔒 Updating Security...' : 'Save & Login'}
                 </button>
               </div>
             </form>
-
-            <p className="text-[10px] text-center text-gray-400 mt-6 uppercase tracking-widest font-bold">
-              Default Password Hint: {user?.registerNumber || 'Reg No'}
-            </p>
+            
+            <div className="mt-8 pt-6 border-t border-gray-50 text-center">
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                Account ID: {user?.registerNumber}
+              </p>
+            </div>
           </div>
         </div>
       )}
 
       {/* Header */}
-      <header className="bg-white shadow">
+      <header className="bg-white/80 backdrop-blur-lg sticky top-0 z-50 border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-blue-600">
-            🎓 {settings?.siteName || 'Hostel Mess'}
-          </h1>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-600/20">
+              {settings?.siteName?.[0] || 'H'}
+            </div>
+            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-blue-500">
+              {settings?.siteName || 'Hostel Mess'}
+            </h1>
+          </div>
           <button
             onClick={handleLogout}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors border border-transparent hover:border-red-100"
           >
-            Logout
+            <span>Logout</span>
+            <span className="text-lg">🚪</span>
           </button>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto p-4">
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+      <main className="max-w-6xl mx-auto p-4 w-full flex-grow">
+        {/* Mobile Navigation Tabs */}
+        <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1">
           {[
-            { id: 'home', label: '🏠 Home' },
-            { id: 'scan', label: '📷 Scan QR' },
-            { id: 'face-scan', label: '🧬 Face Scan' },
-            { id: 'profile', label: '👤 Profile' },
-          ].map(({ id, label }) => (
+            { id: 'home', label: 'Dashboard', icon: '🏠' },
+            { id: 'scan', label: 'Scan QR', icon: '📷' },
+            { id: 'face-scan', label: 'Face Scan', icon: '🧬' },
+            { id: 'profile', label: 'Profile', icon: '👤' },
+          ].map(({ id, label, icon }) => (
             <button
               key={id}
               onClick={() => {
@@ -519,12 +476,15 @@ export const StudentDashboard = () => {
                 if (id !== 'face-scan') stopFaceCamera();
                 setActiveTab(id);
               }}
-              className={`px-5 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all ${
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm whitespace-nowrap transition-all duration-300 ${
                 activeTab === id
-                  ? id === 'face-scan' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-blue-600 text-white shadow-lg'
-                  : 'bg-white text-gray-700 hover:bg-gray-100 shadow-sm'
+                  ? id === 'face-scan' 
+                    ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-500/20 scale-[1.05]' 
+                    : 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 scale-[1.05]'
+                  : 'bg-white text-gray-500 hover:bg-gray-100 shadow-sm border border-gray-100'
               }`}
             >
+              <span className="text-base">{icon}</span>
               {label}
             </button>
           ))}
@@ -532,283 +492,281 @@ export const StudentDashboard = () => {
 
         {/* Home Tab */}
         {activeTab === 'home' && (
-          <div>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <p className="text-blue-800">
-                👋 Welcome, <strong>{user.name}</strong>! ({user.registerNumber})
-              </p>
+          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-3xl p-6 text-white shadow-2xl shadow-blue-500/20 relative overflow-hidden">
+              <div className="relative z-10">
+                <span className="text-xs font-bold uppercase tracking-widest opacity-70">Welcome Back</span>
+                <h2 className="text-3xl font-black mt-1">{user.name}</h2>
+                <div className="flex items-center gap-2 mt-4 text-sm font-medium bg-white/20 w-fit px-3 py-1.5 rounded-full backdrop-blur-md">
+                   {user.registerNumber} • {user.department} ({user.year} Year)
+                </div>
+              </div>
+              <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
             </div>
 
             {/* Face Registration Banner */}
             {!checkingFace && !faceRegistered && (
-              <div className="face-register-banner">
-                <div className="face-register-banner-content">
-                  <div className="face-register-banner-icon">🧬</div>
+              <div className="bg-white border border-emerald-100 rounded-3xl p-6 shadow-xl shadow-emerald-500/5 hover:shadow-emerald-500/10 transition-all group flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4 text-center md:text-left">
+                  <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-3xl shadow-inner border border-emerald-100 group-hover:rotate-6 transition-transform">
+                    🧬
+                  </div>
                   <div>
-                    <h3 className="face-register-banner-title">Register Your Face</h3>
-                    <p className="face-register-banner-desc">
-                      Enable face-based login & meal scanning for faster access
-                    </p>
+                    <h3 className="font-bold text-gray-900 text-lg">Speed Up Your Meals</h3>
+                    <p className="text-gray-500 text-sm mt-0.5">Register your face to skip QR scanning and log in instantly.</p>
                   </div>
                 </div>
                 <button
                   onClick={() => navigate('/face-registration')}
-                  className="face-register-banner-btn"
+                  className="bg-emerald-600 text-white px-8 py-3.5 rounded-2xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-sm w-full md:w-auto"
                 >
-                  Register Now →
+                  Start Registration
                 </button>
               </div>
             )}
 
-            {!checkingFace && faceRegistered && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-4 flex items-center gap-2">
-                <span className="text-xl">✅</span>
-                <p className="text-emerald-700 text-sm font-medium">
-                  Face registered! You can use face login and face-based meal scanning.
-                </p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-600 font-semibold mb-2">This Month's Meals</h3>
-                <p className="text-3xl font-bold text-blue-600">{totalMeals}</p>
-                <div className="text-sm text-gray-500 mt-2">
-                  <p>🍳 Breakfast: {mealCount.breakfast}</p>
-                  <p>🥗 Lunch: {mealCount.lunch}</p>
-                  <p>🍖 Dinner: {mealCount.dinner}</p>
+            {/* Stats Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-xl hover:shadow-gray-200/50 transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Monthly Meals</span>
+                  <div className="w-10 h-10 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center text-xl">🍽️</div>
+                </div>
+                <div className="text-4xl font-black text-gray-900">{totalMeals}</div>
+                <div className="grid grid-cols-3 gap-1 mt-4 pt-4 border-t border-gray-50">
+                   <div className="text-center">
+                     <div className="text-[10px] font-bold text-gray-400 uppercase">Brk</div>
+                     <div className="text-sm font-bold text-blue-600">{mealCount.breakfast}</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-[10px] font-bold text-gray-400 uppercase">Lun</div>
+                     <div className="text-sm font-bold text-blue-600">{mealCount.lunch}</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-[10px] font-bold text-gray-400 uppercase">Din</div>
+                     <div className="text-sm font-bold text-blue-600">{mealCount.dinner}</div>
+                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-600 font-semibold mb-2">Total Meals</h3>
-                <p className="text-3xl font-bold text-green-600">{bill?.meals || 0}</p>
+
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-xl hover:shadow-gray-200/50 transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Usage</span>
+                  <div className="w-10 h-10 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center text-xl">📈</div>
+                </div>
+                <div className="text-4xl font-black text-gray-900">{bill?.meals || 0}</div>
+                <div className="text-[10px] font-bold text-gray-400 uppercase mt-4 pt-4 border-t border-gray-50 tracking-widest">Lifetime attendance</div>
               </div>
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-gray-600 font-semibold mb-2">Current Bill</h3>
-                <p className="text-3xl font-bold text-red-600">
-                  ₹{bill?.totalBill != null ? bill.totalBill.toFixed(2) : '0.00'}
-                </p>
-                {bill?.prices && (
-                  <div className="text-xs text-gray-500 mt-2">
-                    <p>Breakfast: ₹{bill.prices.breakfast} | Lunch: ₹{bill.prices.lunch} | Dinner: ₹{bill.prices.dinner}</p>
-                  </div>
-                )}
+
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 bg-red-50/10 border-red-50 hover:shadow-xl hover:shadow-gray-200/50 transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-xs font-bold text-red-300 uppercase tracking-widest">Monthly Due</span>
+                  <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center text-xl">💰</div>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-bold text-red-600">₹</span>
+                  <span className="text-4xl font-black text-red-600">{bill?.totalBill != null ? bill.totalBill.toFixed(2) : '0.00'}</span>
+                </div>
+                <div className="text-[10px] font-bold text-red-300 uppercase mt-4 pt-4 border-t border-red-100 tracking-widest">Auto-calculated</div>
               </div>
             </div>
-
-            {!bill && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-yellow-700 text-sm">
-                  ℹ️ Bill information will show up once the admin configures meal prices and you start scanning meals.
-                </p>
-              </div>
-            )}
           </div>
         )}
 
         {/* Scan Tab */}
         {activeTab === 'scan' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold mb-4">📷 Meal Scanner</h2>
-            <p className="text-gray-600 mb-6">
-              Point your camera at the QR code posted in the mess hall to mark your meal attendance.
-            </p>
+          <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white rounded-[32px] p-8 shadow-2xl shadow-gray-200/50 border border-gray-100 text-center">
+              <h2 className="text-2xl font-black text-gray-900">Scan Meal QR</h2>
+              <p className="text-gray-500 mt-2 text-sm">Position your camera to see the QR code clearly</p>
 
-            {cameraError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                <p className="text-red-700 font-semibold">❌ {cameraError}</p>
-                <p className="text-red-600 text-sm mt-1">
-                  Tip: Make sure you're using HTTPS and have granted camera permissions.
-                </p>
-              </div>
-            )}
-
-            {!scannerActive ? (
-              <div className="space-y-4">
-                <button
-                  onClick={startCamera}
-                  disabled={loading}
-                  className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 text-lg disabled:opacity-50"
-                >
-                  📷 Open Camera & Scan Meal QR
-                </button>
-                <button
-                  onClick={handleEggScan}
-                  disabled={loading}
-                  className="w-full bg-yellow-500 text-white py-4 rounded-lg font-semibold hover:bg-yellow-600 text-lg disabled:opacity-50"
-                >
-                  {loading ? '⏳ Processing...' : '🥚 Collect Egg (Thursday Only)'}
-                </button>
-              </div>
-            ) : (
-              <div>
-                <div className="relative bg-black rounded-lg overflow-hidden mb-4" style={{ maxWidth: 640, margin: '0 auto' }}>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    style={{ width: '100%', display: 'block' }}
-                  />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      width: 200,
-                      height: 200,
-                      border: '3px solid #22c55e',
-                      borderRadius: 12,
-                      boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)',
-                    }}
-                  />
+              {cameraError && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold mt-6 border border-red-100">
+                   📷 {cameraError}
                 </div>
-                <p className="text-center text-gray-600 mb-4 animate-pulse">
-                  🔍 Scanning... Point the camera at the QR code
-                </p>
-                <button
-                  onClick={stopCamera}
-                  className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700"
-                >
-                  ✕ Cancel Scan
-                </button>
+              )}
+
+              <div className="mt-8">
+                {!scannerActive ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    <button
+                      onClick={startCamera}
+                      className="group bg-blue-600 text-white p-6 rounded-[24px] shadow-xl shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                    >
+                       <div className="text-4xl mb-3 group-hover:rotate-12 transition-transform">📷</div>
+                       <div className="font-black text-xl">Open Camera</div>
+                    </button>
+                    <button
+                      onClick={handleEggScan}
+                      disabled={loading}
+                      className="flex items-center justify-center gap-3 bg-yellow-400 text-yellow-900 p-5 rounded-[24px] font-black hover:bg-yellow-500 transition-all shadow-lg shadow-yellow-400/20 disabled:opacity-50"
+                    >
+                      <span className="text-2xl">🥚</span>
+                      {loading ? 'Processing...' : 'Collect Thursday Egg'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="relative aspect-square max-w-[320px] mx-auto bg-black rounded-[32px] overflow-hidden shadow-2xl border-4 border-blue-600 ring-8 ring-blue-50">
+                      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                      <canvas ref={canvasRef} style={{ display: 'none' }} />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-48 h-48 border-2 border-white/50 rounded-2xl relative">
+                          <div className="absolute top-[-2px] left-[-2px] w-6 h-6 border-t-4 border-l-4 border-white rounded-tl-lg"></div>
+                          <div className="absolute top-[-2px] right-[-2px] w-6 h-6 border-t-4 border-r-4 border-white rounded-tr-lg"></div>
+                          <div className="absolute bottom-[-2px] left-[-2px] w-6 h-6 border-b-4 border-l-4 border-white rounded-bl-lg"></div>
+                          <div className="absolute bottom-[-2px] right-[-2px] w-6 h-6 border-b-4 border-r-4 border-white rounded-br-lg"></div>
+                        </div>
+                      </div>
+                      <div className="absolute top-4 inset-x-0 flex justify-center">
+                        <div className="bg-black/50 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border border-white/20">Active Scanner</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={stopCamera}
+                      className="w-full bg-red-50 text-red-600 py-4 rounded-2xl font-black hover:bg-red-100 transition-all"
+                    >
+                      ✕ Close Camera
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         )}
 
         {/* Face Scan Tab */}
         {activeTab === 'face-scan' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold mb-4">🧬 Face Meal Scanner</h2>
+          <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="bg-white rounded-[32px] p-8 shadow-2xl shadow-emerald-200/50 border border-emerald-100">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-black text-gray-900">Face Recognition</h2>
+                <p className="text-gray-500 mt-2 text-sm">Instant authentication for your meals</p>
+              </div>
 
-            {!faceRegistered ? (
-              <div className="text-center py-8">
-                <div className="text-6xl mb-4">🧬</div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">Face Not Registered</h3>
-                <p className="text-gray-500 mb-6">
-                  You need to register your face before using face-based meal scanning.
-                </p>
-                <button
-                  onClick={() => navigate('/face-registration')}
-                  className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-emerald-700"
-                >
-                  🧬 Register Face
-                </button>
-              </div>
-            ) : !faceScanMode ? (
-              <div className="space-y-4">
-                <p className="text-gray-600 mb-4">
-                  Use your face to quickly scan and verify your meal attendance.
-                </p>
-                <button
-                  onClick={startFaceScan}
-                  disabled={faceModelsLoading}
-                  className="w-full bg-emerald-600 text-white py-4 rounded-lg font-semibold hover:bg-emerald-700 text-lg disabled:opacity-50"
-                >
-                  {faceModelsLoading ? '⏳ Loading models...' : '🎥 Open Face Scanner'}
-                </button>
-                <button
-                  onClick={handleEggScan}
-                  disabled={loading}
-                  className="w-full bg-yellow-500 text-white py-4 rounded-lg font-semibold hover:bg-yellow-600 text-lg disabled:opacity-50"
-                >
-                  {loading ? '⏳ Processing...' : '🥚 Collect Egg (Thursday Only)'}
-                </button>
-              </div>
-            ) : (
-              <div>
-                {/* Camera */}
-                <div className="face-login-camera-wrapper mb-4">
-                  <video ref={faceVideoRef} autoPlay playsInline muted className="face-login-video" />
-                  <canvas ref={faceOverlayRef} className="face-login-overlay" />
-                  <div className={`face-login-indicator ${faceDetected ? 'detected' : ''}`}>
-                    {faceDetected ? '✅ Face Detected' : '⚠️ Looking for face...'}
+              {!faceRegistered ? (
+                 <div className="bg-emerald-50 p-8 rounded-[32px] text-center border border-emerald-100">
+                   <div className="text-6xl mb-4">🧬</div>
+                   <h3 className="text-xl font-bold text-emerald-900">Registration Required</h3>
+                   <p className="text-emerald-700/70 text-sm mt-2 mb-6">Register your face template securely to use this feature.</p>
+                   <button
+                     onClick={() => navigate('/face-registration')}
+                     className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black shadow-lg shadow-emerald-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                   >
+                     Setup Face ID
+                   </button>
+                 </div>
+              ) : !faceScanMode ? (
+                <div className="space-y-4">
+                  <button
+                    onClick={startFaceScan}
+                    disabled={faceModelsLoading}
+                    className="w-full bg-emerald-600 text-white p-6 rounded-[24px] shadow-xl shadow-emerald-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  >
+                     <div className="text-4xl mb-3 group-hover:rotate-12 transition-transform">🧬</div>
+                     <div className="font-black text-xl">{faceModelsLoading ? 'Preparing AI...' : 'Start Face Scanner'}</div>
+                  </button>
+                  <button
+                    onClick={handleEggScan}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-3 bg-yellow-400 text-yellow-900 p-5 rounded-[24px] font-black hover:bg-yellow-500 transition-all shadow-lg shadow-yellow-400/20 disabled:opacity-50"
+                  >
+                    <span className="text-2xl">🥚</span>
+                    {loading ? 'Processing...' : 'Collect Thursday Egg'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="relative aspect-square max-w-[320px] mx-auto bg-black rounded-[32px] overflow-hidden shadow-2xl border-4 border-emerald-600 ring-8 ring-emerald-50">
+                    <video ref={faceVideoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror-mode" />
+                    <canvas ref={faceOverlayRef} className="absolute inset-0 w-full h-full mirror-mode" />
+                    <div className={`absolute top-4 inset-x-0 flex justify-center transition-all ${faceDetected ? 'opacity-100' : 'opacity-0'}`}>
+                       <div className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">Face Balanced</div>
+                    </div>
                   </div>
-                </div>
 
-                {/* Meal Buttons */}
-                <p className="text-gray-600 text-center mb-4">Select your meal to scan:</p>
-                <div className="grid grid-cols-3 gap-3 mb-4">
-                  {[
-                    { type: 'BREAKFAST', emoji: '🍳', color: 'bg-orange-500 hover:bg-orange-600' },
-                    { type: 'LUNCH', emoji: '🥗', color: 'bg-green-500 hover:bg-green-600' },
-                    { type: 'DINNER', emoji: '🍖', color: 'bg-purple-500 hover:bg-purple-600' },
-                  ].map(({ type, emoji, color }) => (
-                    <button
-                      key={type}
-                      onClick={() => handleFaceMealScan(type)}
-                      disabled={!faceDetected || faceScanning}
-                      className={`${color} text-white py-4 rounded-lg font-semibold text-sm disabled:opacity-50 transition`}
-                    >
-                      {faceScanning ? '⏳' : emoji}<br />{type}
-                    </button>
-                  ))}
-                </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { type: 'BREAKFAST', emoji: '🍳', label: 'Morning' },
+                      { type: 'LUNCH', emoji: '🥗', label: 'Noon' },
+                      { type: 'DINNER', emoji: '🍖', label: 'Night' },
+                    ].map(({ type, emoji, label }) => (
+                      <button
+                        key={type}
+                        onClick={() => handleFaceMealScan(type)}
+                        disabled={!faceDetected || faceScanning}
+                        className="bg-gray-50 border border-gray-100 p-4 rounded-2xl flex flex-col items-center gap-1 hover:border-emerald-200 transition-colors disabled:opacity-30"
+                      >
+                         <span className="text-2xl">{faceScanning ? '⏳' : emoji}</span>
+                         <span className="text-[10px] font-black uppercase tracking-tight text-gray-400">{label}</span>
+                         <span className="text-xs font-black text-gray-800">{type[0] + type.slice(1).toLowerCase()}</span>
+                      </button>
+                    ))}
+                  </div>
 
-                <button
-                  onClick={stopFaceCamera}
-                  className="w-full bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
-                >
-                  ✕ Close Scanner
-                </button>
-              </div>
-            )}
+                  <button
+                    onClick={stopFaceCamera}
+                    className="w-full bg-gray-50 text-gray-400 py-4 rounded-2xl font-bold hover:text-gray-600 transition-all"
+                  >
+                    ✕ Close Scanner
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold mb-6">Profile Information</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-gray-600">Name</p>
-                <p className="text-lg font-semibold">{user.name}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Register Number</p>
-                <p className="text-lg font-semibold">{user.registerNumber}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Department</p>
-                <p className="text-lg font-semibold">{user.department}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Year</p>
-                <p className="text-lg font-semibold">{user.year}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Mobile</p>
-                <p className="text-lg font-semibold">{user.mobile}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Email</p>
-                <p className="text-lg font-semibold">{user.email || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Face Registration</p>
-                <p className={`text-lg font-semibold ${faceRegistered ? 'text-emerald-600' : 'text-gray-400'}`}>
-                  {checkingFace ? 'Checking...' : faceRegistered ? '✅ Registered' : '❌ Not Registered'}
-                </p>
-              </div>
-            </div>
+          <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+             <div className="bg-white rounded-[32px] p-8 shadow-sm border border-gray-100">
+               <div className="text-center mb-8">
+                 <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center text-4xl mx-auto border-4 border-white shadow-xl">👤</div>
+                 <h2 className="text-2xl font-black text-gray-900 mt-4">{user.name}</h2>
+                 <p className="text-blue-600 font-bold text-sm tracking-wide mt-1">{user.registerNumber}</p>
+               </div>
 
-            {!checkingFace && !faceRegistered && (
-              <div className="mt-6 pt-4 border-t">
-                <button
-                  onClick={() => navigate('/face-registration')}
-                  className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-emerald-700"
-                >
-                  🧬 Register Face
-                </button>
-              </div>
-            )}
+               <div className="space-y-4">
+                 {[
+                   { label: 'Department', value: user.department },
+                   { label: 'Academic Year', value: user.year + ' Year' },
+                   { label: 'Mobile Contact', value: user.mobile },
+                   { label: 'Email Address', value: user.email || 'Not configured', isDim: !user.email },
+                 ].map((item, i) => (
+                   <div key={i} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl">
+                     <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.label}</span>
+                     <span className={`font-black text-gray-900 ${item.isDim ? 'text-gray-300 italic' : ''}`}>{item.value}</span>
+                   </div>
+                 ))}
+                 
+                 <div className="flex justify-between items-center p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <span className="text-xs font-bold text-emerald-900/60 uppercase tracking-widest">Face Authentication</span>
+                    <span className={`font-black ${faceRegistered ? 'text-emerald-600' : 'text-emerald-300'}`}>
+                      {faceRegistered ? 'Active ✓' : 'Inactive'}
+                    </span>
+                 </div>
+               </div>
+
+               <div className="mt-8 pt-8 border-t border-gray-50">
+                 <button onClick={handleLogout} className="w-full bg-red-50 text-red-600 py-4 rounded-2xl font-black hover:bg-red-100 transition-all">
+                    Sign Out of Portal
+                 </button>
+               </div>
+             </div>
           </div>
         )}
       </main>
+      
+      <footer className="max-w-6xl mx-auto px-4 py-8 text-center">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-1">Hostel Mess Management System</p>
+        <p className="text-[10px] text-gray-300 tracking-widest">Build 1.2.4 • Secured with JWT & Biometrics</p>
+      </footer>
+      
+      <style>{`
+        .mirror-mode { transform: scaleX(-1); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   );
 };
