@@ -33,7 +33,7 @@ export const StudentDashboard = () => {
   const [faceScanMode, setFaceScanMode] = useState(false);
   const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
   const [faceModelsLoading, setFaceModelsLoading] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceDetected, setFaceDetected] = useState('none'); // none, detected, multiple
   const [faceScanning, setFaceScanning] = useState(false);
 
   // Forced Password Change State
@@ -102,7 +102,7 @@ export const StudentDashboard = () => {
       faceStreamRef.current = null;
     }
     setFaceScanMode(false);
-    setFaceDetected(false);
+    setFaceDetected('none');
   }, []);
 
   const startFaceDetectLoop = useCallback(() => {
@@ -123,16 +123,20 @@ export const StudentDashboard = () => {
           const ctx = overlay.getContext('2d');
           ctx.clearRect(0, 0, overlay.width, overlay.height);
           if (resized.length === 1) {
-            setFaceDetected(true);
+            setFaceDetected('detected');
             const box = resized[0].detection.box;
             ctx.strokeStyle = '#22c55e';
             ctx.lineWidth = 3;
             ctx.strokeRect(box.x, box.y, box.width, box.height);
+          } else if (resized.length > 1) {
+            setFaceDetected('multiple');
           } else {
-            setFaceDetected(false);
+            setFaceDetected('none');
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        setFaceDetected('none');
+      }
       faceAnimRef.current = requestAnimationFrame(detect);
     };
     detect();
@@ -282,7 +286,7 @@ export const StudentDashboard = () => {
         .withFaceLandmarks()
         .withFaceDescriptor();
       if (!detection) {
-        toast.error('No face detected. Please face the camera.');
+        toast.error('No face detected. Please face the camera directly.');
         setFaceScanning(false);
         return;
       }
@@ -680,8 +684,12 @@ export const StudentDashboard = () => {
                   <div className="relative aspect-square max-w-[320px] mx-auto bg-black rounded-[32px] overflow-hidden shadow-2xl border-4 border-emerald-600 ring-8 ring-emerald-50">
                     <video ref={faceVideoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror-mode" />
                     <canvas ref={faceOverlayRef} className="absolute inset-0 w-full h-full mirror-mode" />
-                    <div className={`absolute top-4 inset-x-0 flex justify-center transition-all ${faceDetected ? 'opacity-100' : 'opacity-0'}`}>
-                       <div className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">Face Balanced</div>
+                    <div className={`absolute top-4 inset-x-0 flex justify-center transition-all ${faceDetected === 'detected' || faceDetected === 'multiple' ? 'opacity-100' : 'opacity-0'}`}>
+                       <div className={`text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg ${
+                         faceDetected === 'detected' ? 'bg-emerald-500' : 'bg-amber-500'
+                       }`}>
+                         {faceDetected === 'detected' ? 'Face Balanced' : 'Multiple Faces'}
+                       </div>
                     </div>
                   </div>
 
@@ -694,7 +702,7 @@ export const StudentDashboard = () => {
                       <button
                         key={type}
                         onClick={() => handleFaceMealScan(type)}
-                        disabled={!faceDetected || faceScanning}
+                         disabled={faceDetected !== 'detected' || faceScanning}
                         className="bg-gray-50 border border-gray-100 p-4 rounded-2xl flex flex-col items-center gap-1 hover:border-emerald-200 transition-colors disabled:opacity-30"
                       >
                          <span className="text-2xl">{faceScanning ? '⏳' : emoji}</span>

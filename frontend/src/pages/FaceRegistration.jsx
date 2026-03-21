@@ -18,7 +18,7 @@ export const FaceRegistration = () => {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [captureCountdown, setCaptureCountdown] = useState(null);
-  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceDetected, setFaceDetected] = useState('none'); // none, detected, multiple
   const [submitting, setSubmitting] = useState(false);
 
   // Refs
@@ -41,7 +41,7 @@ export const FaceRegistration = () => {
       streamRef.current = null;
     }
     setCameraActive(false);
-    setFaceDetected(false);
+    setFaceDetected('none');
   }, []);
 
   const startFaceDetectionLoop = useCallback(() => {
@@ -55,7 +55,7 @@ export const FaceRegistration = () => {
       }
 
       try {
-        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 });
+        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.35 });
         const detections = await faceapi
           .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks();
@@ -68,7 +68,7 @@ export const FaceRegistration = () => {
           ctx.clearRect(0, 0, overlay.width, overlay.height);
 
           if (resized.length === 1) {
-            setFaceDetected(true);
+            setFaceDetected('detected');
             const box = resized[0].detection.box;
             ctx.strokeStyle = '#10b981'; // emerald-500
             ctx.lineWidth = 4;
@@ -82,11 +82,15 @@ export const FaceRegistration = () => {
               ctx.arc(pt.x, pt.y, 2, 0, 2 * Math.PI);
               ctx.fill();
             });
+          } else if (resized.length > 1) {
+            setFaceDetected('multiple');
           } else {
-            setFaceDetected(false);
+            setFaceDetected('none');
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        setFaceDetected('none');
+      }
       animFrameRef.current = requestAnimationFrame(detect);
     };
     detect();
@@ -352,11 +356,13 @@ export const FaceRegistration = () => {
                     <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full mirror-mode" />
                     
                     {/* UI Overlays */}
-                    <div className="absolute top-6 left-6 flex items-center gap-3">
-                       <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border ${
-                         faceDetected ? 'bg-emerald-500/80 text-white border-emerald-400' : 'bg-red-500/80 text-white border-red-400'
+                     <div className="absolute top-6 left-6 flex items-center gap-3">
+                       <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg transition-all duration-300 ${
+                         faceDetected === 'detected' ? 'bg-emerald-500/90 text-white border-emerald-400 scale-105' : 
+                         faceDetected === 'multiple' ? 'bg-amber-500/90 text-white border-amber-400' : 'bg-red-500/80 text-white border-red-400 animate-pulse'
                        }`}>
-                         {faceDetected ? '✓ Face Tracked' : '⚠️ No Signal'}
+                         {faceDetected === 'detected' ? '✓ Face Tracked' : 
+                          faceDetected === 'multiple' ? '⚠️ Multiple Faces' : '🔍 Searching...'}
                        </div>
                     </div>
 
@@ -384,7 +390,7 @@ export const FaceRegistration = () => {
                      {step === 'capturing' ? (
                        <button 
                          onClick={captureFrame} 
-                         disabled={!faceDetected || captureCountdown !== null}
+                         disabled={faceDetected !== 'detected' || captureCountdown !== null}
                          className="group bg-slate-900 text-white px-12 py-5 rounded-[24px] font-black text-lg hover:bg-black active:scale-[0.98] transition-all shadow-2xl shadow-slate-900/20 disabled:opacity-40"
                        >
                          {captureCountdown ? `Capturing...` : `Capture Sample #${captures.length + 1}`}

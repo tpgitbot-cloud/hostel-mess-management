@@ -59,7 +59,7 @@ export const AdminDashboard = () => {
   const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
   const [faceModelsLoading, setFaceModelsLoading] = useState(false);
   const [faceScannerActive, setFaceScannerActive] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceDetected, setFaceDetected] = useState('none'); // none, detected, multiple
   const [faceScanning, setFaceScanning] = useState(false);
   const [identifiedStudent, setIdentifiedStudent] = useState(null);
   const [scanMessage, setScanMessage] = useState('');
@@ -205,8 +205,7 @@ export const AdminDashboard = () => {
       faceStreamRef.current.getTracks().forEach((t) => t.stop());
       faceStreamRef.current = null;
     }
-    setFaceScannerActive(false);
-    setIdentifiedStudent(null);
+    setFaceDetected('none');
     setScanMessage('');
   };
 
@@ -247,16 +246,20 @@ export const AdminDashboard = () => {
           const ctx = overlay.getContext('2d');
           ctx.clearRect(0, 0, overlay.width, overlay.height);
           if (resized.length === 1) {
-            setFaceDetected(true);
+            setFaceDetected('detected');
             const box = resized[0].detection.box;
             ctx.strokeStyle = '#22c55e';
             ctx.lineWidth = 3;
             ctx.strokeRect(box.x, box.y, box.width, box.height);
+          } else if (resized.length > 1) {
+            setFaceDetected('multiple');
           } else {
-            setFaceDetected(false);
+            setFaceDetected('none');
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        setFaceDetected('none');
+      }
       faceAnimRef.current = requestAnimationFrame(detect);
     };
     detect();
@@ -995,15 +998,19 @@ export const AdminDashboard = () => {
                     <>
                       <video ref={faceVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
                       <canvas ref={faceOverlayRef} className="absolute top-0 left-0 w-full h-full scale-x-[-1]" />
-                      <div className={`absolute bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-sm font-bold text-white ${faceDetected ? 'bg-green-600' : 'bg-red-600'}`}>
-                        {faceDetected ? '🟢 FACE DETECTED' : '🔴 NO FACE'}
+                      <div className={`absolute bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-sm font-bold text-white shadow-lg transition-all ${
+                        faceDetected === 'detected' ? 'bg-green-600' : 
+                        faceDetected === 'multiple' ? 'bg-amber-600' : 'bg-red-600'
+                      }`}>
+                        {faceDetected === 'detected' ? '🟢 FACE DETECTED' : 
+                         faceDetected === 'multiple' ? '⚠️ MULTIPLE FACES' : '🔴 SEARCHING...'}
                       </div>
                     </>
                   )}
                 </div>
                 {faceScannerActive && (
                   <div className="flex gap-3">
-                    <button onClick={handleAdminFaceScan} disabled={!faceDetected || faceScanning}
+                    <button onClick={handleAdminFaceScan} disabled={faceDetected !== 'detected' || faceScanning}
                       className="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition disabled:opacity-50">
                       {faceScanning ? '⌛ Identifying...' : '🔍 Scan & Identify'}
                     </button>

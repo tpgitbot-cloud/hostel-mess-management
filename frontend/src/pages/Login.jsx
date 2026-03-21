@@ -26,7 +26,7 @@ export const Login = () => {
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceDetected, setFaceDetected] = useState('none'); // none, detected, multiple
   const [cameraError, setCameraError] = useState('');
   const [faceScanning, setFaceScanning] = useState(false);
 
@@ -139,7 +139,7 @@ export const Login = () => {
       streamRef.current = null;
     }
     setCameraActive(false);
-    setFaceDetected(false);
+    setFaceDetected('none');
   };
 
   const startFaceLogin = async () => {
@@ -190,19 +190,20 @@ export const Login = () => {
           ctx.clearRect(0, 0, overlay.width, overlay.height);
 
           if (resized.length === 1) {
-            setFaceDetected(true);
+            setFaceDetected('detected');
             const box = resized[0].detection.box;
             ctx.strokeStyle = '#22c55e';
             ctx.lineWidth = 3;
             ctx.strokeRect(box.x, box.y, box.width, box.height);
+          } else if (resized.length > 1) {
+            setFaceDetected('multiple');
           } else {
-            setFaceDetected(false);
+            setFaceDetected('none');
           }
         }
       } catch (e) {
-        // Ignore
+        setFaceDetected('none');
       }
-
       animFrameRef.current = requestAnimationFrame(detect);
     };
     detect();
@@ -438,8 +439,11 @@ export const Login = () => {
                       className="face-login-video"
                     />
                     <canvas ref={overlayCanvasRef} className="face-login-overlay" />
-                    <div className={`face-login-indicator ${faceDetected ? 'detected' : ''}`}>
-                      {faceDetected ? '✅ Face Detected' : '⚠️ Looking for face...'}
+                    <div className={`face-login-indicator ${faceDetected === 'detected' ? 'detected' : ''} ${faceDetected === 'multiple' ? 'multiple' : ''}`} style={{
+                      backgroundColor: faceDetected === 'detected' ? '#10b981' : faceDetected === 'multiple' ? '#f59e0b' : '#ef4444'
+                    }}>
+                      {faceDetected === 'detected' ? '✅ Face Detected' : 
+                       faceDetected === 'multiple' ? '⚠️ Multiple Faces' : '🔍 Looking for face...'}
                     </div>
                   </div>
 
@@ -447,7 +451,7 @@ export const Login = () => {
                   <div className="mt-4 space-y-2">
                     <button
                       onClick={handleFaceScan}
-                      disabled={!faceDetected || faceScanning}
+                      disabled={faceDetected !== 'detected' || faceScanning}
                       className="w-full bg-emerald-600 text-white py-3 rounded-lg font-semibold hover:bg-emerald-700 disabled:opacity-50 transition"
                     >
                       {faceScanning ? '⏳ Scanning...' : '🔍 Scan & Login'}
