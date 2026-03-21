@@ -55,8 +55,8 @@ export const FaceRegistration = () => {
       }
 
       try {
-        // Try SSD first (more accurate), fallback to Tiny
-        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 });
+        // Use ultra-low threshold to avoid "Searching" staleness
+        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.05 });
         const detections = await faceapi
           .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks();
@@ -153,8 +153,8 @@ export const FaceRegistration = () => {
     setCaptureCountdown(null);
 
     try {
-      // Manual capture uses higher precision
-      const ssdOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 });
+      // Manual capture uses ultra-low precision for maximum compatibility
+      const ssdOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.05 });
       const detection = await faceapi
         .detectSingleFace(videoRef.current, ssdOptions)
         .withFaceLandmarks()
@@ -369,7 +369,7 @@ export const FaceRegistration = () => {
                          faceDetected === 'multiple' ? 'bg-amber-500/90 text-white border-amber-400' : 'bg-red-500/80 text-white border-red-400 animate-pulse'
                        }`}>
                          {faceDetected === 'detected' ? '✓ Face Tracked' : 
-                          faceDetected === 'multiple' ? '⚠️ Multiple Faces' : '🔍 Searching...'}
+                          faceDetected === 'multiple' ? '⚠️ Multiple Faces' : '🔍 Seeking Face...'}
                        </div>
                     </div>
 
@@ -397,7 +397,7 @@ export const FaceRegistration = () => {
                      {step === 'capturing' ? (
                        <button 
                          onClick={captureFrame} 
-                         disabled={faceDetected !== 'detected' || captureCountdown !== null}
+                         disabled={captureCountdown !== null}
                          className="group bg-slate-900 text-white px-12 py-5 rounded-[24px] font-black text-lg hover:bg-black active:scale-[0.98] transition-all shadow-2xl shadow-slate-900/20 disabled:opacity-40"
                        >
                          {captureCountdown ? `Capturing...` : `Capture Sample #${captures.length + 1}`}
