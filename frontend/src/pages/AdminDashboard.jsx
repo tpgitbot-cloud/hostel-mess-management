@@ -170,6 +170,7 @@ export const AdminDashboard = () => {
       );
       faceapiRef.current = faceapi;
       const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
@@ -237,7 +238,7 @@ export const AdminDashboard = () => {
         return;
       }
       try {
-        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.15 });
+        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 });
         const detections = await faceapi.detectAllFaces(faceVideoRef.current, options).withFaceLandmarks();
         const overlay = faceOverlayRef.current;
         if (overlay && faceVideoRef.current) {
@@ -293,7 +294,7 @@ export const AdminDashboard = () => {
     setFaceScanning(true);
     setScanMessage('Scanning face...');
     try {
-      const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
+      const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 });
       const detection = await faceapi
         .detectSingleFace(faceVideoRef.current, options)
         .withFaceLandmarks()
