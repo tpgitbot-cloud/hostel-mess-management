@@ -55,7 +55,8 @@ export const FaceRegistration = () => {
       }
 
       try {
-        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.15 });
+        // Try SSD first (more accurate), fallback to Tiny
+        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 });
         const detections = await faceapi
           .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks();
@@ -89,7 +90,9 @@ export const FaceRegistration = () => {
           }
         }
       } catch (e) {
-        setFaceDetected('none');
+        console.error("Detection Error:", e);
+        // Only set to none if it's not already something else
+        setFaceDetected(prev => prev === 'detected' ? 'none' : prev);
       }
       animFrameRef.current = requestAnimationFrame(detect);
     };
@@ -104,6 +107,8 @@ export const FaceRegistration = () => {
         'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
       );
       faceapiRef.current = faceapi;
+      setLoadingProgress('Neural Network: Engine...');
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
       setLoadingProgress('Neural Network: Tiny Detector...');
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       setLoadingProgress('Neural Network: Face Landmarks...');
@@ -148,9 +153,10 @@ export const FaceRegistration = () => {
     setCaptureCountdown(null);
 
     try {
-      const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
+      // Manual capture uses higher precision
+      const ssdOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.1 });
       const detection = await faceapi
-        .detectSingleFace(videoRef.current, options)
+        .detectSingleFace(videoRef.current, ssdOptions)
         .withFaceLandmarks()
         .withFaceDescriptor();
 
