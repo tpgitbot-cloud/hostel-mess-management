@@ -55,7 +55,7 @@ export const FaceRegistration = () => {
       }
 
       try {
-        const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.35 });
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.15 });
         const detections = await faceapi
           .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks();
@@ -104,8 +104,8 @@ export const FaceRegistration = () => {
         'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
       );
       faceapiRef.current = faceapi;
-      setLoadingProgress('Neural Network: SSD MobileNet...');
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      setLoadingProgress('Neural Network: Tiny Detector...');
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       setLoadingProgress('Neural Network: Face Landmarks...');
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       setLoadingProgress('Neural Network: Recognition...');
@@ -148,8 +148,9 @@ export const FaceRegistration = () => {
     setCaptureCountdown(null);
 
     try {
+      const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
       const detection = await faceapi
-        .detectSingleFace(videoRef.current)
+        .detectSingleFace(videoRef.current, options)
         .withFaceLandmarks()
         .withFaceDescriptor();
 

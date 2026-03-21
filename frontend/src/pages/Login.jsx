@@ -114,7 +114,7 @@ export const Login = () => {
       );
       faceapiRef.current = faceapi;
 
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
 
@@ -176,8 +176,9 @@ export const Login = () => {
       }
 
       try {
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.15 });
         const detections = await faceapi
-          .detectAllFaces(videoRef.current)
+          .detectAllFaces(videoRef.current, options)
           .withFaceLandmarks();
 
         const overlay = overlayCanvasRef.current;
@@ -236,8 +237,9 @@ export const Login = () => {
     setFaceScanning(true);
 
     try {
+      const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
       const detection = await faceapi
-        .detectSingleFace(videoRef.current)
+        .detectSingleFace(videoRef.current, options)
         .withFaceLandmarks()
         .withFaceDescriptor();
 

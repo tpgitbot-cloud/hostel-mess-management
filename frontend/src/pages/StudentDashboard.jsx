@@ -115,7 +115,8 @@ export const StudentDashboard = () => {
         return;
       }
       try {
-        const detections = await faceapi.detectAllFaces(faceVideoRef.current).withFaceLandmarks();
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 256, scoreThreshold: 0.15 });
+        const detections = await faceapi.detectAllFaces(faceVideoRef.current, options).withFaceLandmarks();
         const overlay = faceOverlayRef.current;
         if (overlay && faceVideoRef.current) {
           const dims = faceapi.matchDimensions(overlay, faceVideoRef.current, false);
@@ -248,7 +249,7 @@ export const StudentDashboard = () => {
         'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js'
       );
       faceapiRef.current = faceapi;
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
       setFaceModelsLoaded(true);
@@ -281,8 +282,9 @@ export const StudentDashboard = () => {
     if (!faceapi || !faceVideoRef.current) return;
     setFaceScanning(true);
     try {
+      const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 });
       const detection = await faceapi
-        .detectSingleFace(faceVideoRef.current)
+        .detectSingleFace(faceVideoRef.current, options)
         .withFaceLandmarks()
         .withFaceDescriptor();
       if (!detection) {
